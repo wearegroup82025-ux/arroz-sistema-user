@@ -116,6 +116,14 @@ class _LoginUserPageState extends State<LoginUserPage> {
       'resendIn': 'Resend available in',
       'otpSent': 'OTP code sent successfully!',
       'passwordUpdated': 'Your password has been updated successfully.',
+
+      'accBlockedTitle': 'Account Blocked',
+      'accBlockedSub':
+      'Your account has been restricted by the admin. Please contact support.',
+
+      'accDeletedTitle': 'Account Deleted',
+      'accDeletedSub':
+      'This account has been deleted or scheduled for permanent deletion.',
     },
 
     'Tagalog': {
@@ -194,6 +202,14 @@ class _LoginUserPageState extends State<LoginUserPage> {
       'otpSent': 'Matagumpay na naipadala ang OTP!',
       'passwordUpdated':
       'Matagumpay na na-update ang iyong password.',
+
+      'accBlockedTitle': 'Naka-block ang Account',
+      'accBlockedSub':
+      'Ang iyong account ay na-restrict ng Admin. Makipag-ugnayan sa support.',
+
+      'accDeletedTitle': 'Account Dinelete Na',
+      'accDeletedSub':
+      'Ang account na ito ay nabura na o naka-schedule para sa permanent deletion.',
     },
   };
 
@@ -321,7 +337,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
   }
 
   // ============================================================
-  // LOGIN
+  // LOGIN (INAYOS NATING MAY CHECKING SA FIRESTORE KUNG BLOCKED/DELETED)
   // ============================================================
 
   Future<void> _handleLogin() async {
@@ -362,11 +378,71 @@ class _LoginUserPageState extends State<LoginUserPage> {
       final password =
       _passwordController.text.trim();
 
-      await FirebaseAuth.instance
+      UserCredential credential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      final uid = credential.user?.uid;
+
+      if (uid != null) {
+        // Titingnan natin sa Firestore ang Status ng User Document
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get();
+
+        // 1. Kung nabura na ang Document sa Firestore
+        if (!userDoc.exists) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showCustomWarningDialog(
+            context: context,
+            title: localized['accDeletedTitle']!,
+            description: localized['accDeletedSub']!,
+            icon: Icons.person_off_rounded,
+            color: ArrozTheme.error,
+            buttonText: localized['btnUnderstand']!,
+          );
+          return;
+        }
+
+        final data = userDoc.data() as Map<String, dynamic>;
+        final bool isBlocked = data['isBlocked'] ?? false;
+        final bool isScheduledForDeletion =
+            data['isScheduledForDeletion'] ?? false;
+
+        // 2. Kung naka-block ang account
+        if (isBlocked) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showCustomWarningDialog(
+            context: context,
+            title: localized['accBlockedTitle']!,
+            description: localized['accBlockedSub']!,
+            icon: Icons.block_rounded,
+            color: ArrozTheme.error,
+            buttonText: localized['btnUnderstand']!,
+          );
+          return;
+        }
+
+        // 3. Kung scheduled for deletion ang account
+        if (isScheduledForDeletion) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showCustomWarningDialog(
+            context: context,
+            title: localized['accDeletedTitle']!,
+            description: localized['accDeletedSub']!,
+            icon: Icons.person_off_rounded,
+            color: ArrozTheme.error,
+            buttonText: localized['btnUnderstand']!,
+          );
+          return;
+        }
+      }
 
       _failedAttempts = 0;
 

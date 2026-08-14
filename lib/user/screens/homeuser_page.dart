@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +7,7 @@ import 'orders_page.dart';
 import 'product_page.dart';
 import 'profile_page.dart';
 import 'messages_page.dart';
+import 'login_page.dart';
 import 'package:provider/provider.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
@@ -24,11 +26,90 @@ class HomeUserPage extends StatefulWidget {
 
 class _HomeUserPageState extends State<HomeUserPage> {
   int _currentIndex = 0;
+  StreamSubscription<DocumentSnapshot>? _userSubscription;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _listenToAccountStatus();
+  }
+
+  // 🔥 REAL-TIME LISTENER PARA SA AUTO-LOGOUT
+  void _listenToAccountStatus() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    _userSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUser.uid)
+        .snapshots()
+        .listen((snapshot) async {
+      // 1. Kung nabura ang user document sa Firestore
+      if (!snapshot.exists) {
+        await _forceLogout(
+          title: 'Account Deleted',
+          message: 'Ang iyong account ay nabura na ng admin.',
+        );
+        return;
+      }
+
+      final data = snapshot.data();
+      if (data != null) {
+        final bool isBlocked = data['isBlocked'] ?? false;
+        final bool isScheduledForDeletion = data['isScheduledForDeletion'] ?? false;
+
+        // 2. Kung naka-block o naka-schedule for deletion ang account
+        if (isBlocked || isScheduledForDeletion) {
+          await _forceLogout(
+            title: isBlocked ? 'Account Blocked' : 'Account Deleted',
+            message: isBlocked
+                ? 'Ang iyong account ay hinarang ng admin.'
+                : 'Ang iyong account ay naka-schedule na para sa deletion.',
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> _forceLogout({required String title, required String message}) async {
+    // I-cancel ang listener para hindi paulit-ulit na tumakbo
+    await _userSubscription?.cancel();
+
+    // Sign out sa Firebase Auth
+    await FirebaseAuth.instance.signOut();
+
+    if (!mounted) return;
+
+    // Ipakita ang prompt dialog sa user
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginUserPage()),
+                    (route) => false,
+              );
+            },
+            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _userSubscription?.cancel();
+    super.dispose();
   }
 
   List<Widget> _buildPages() {
