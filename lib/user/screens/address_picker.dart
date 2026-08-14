@@ -625,31 +625,20 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
   Future<void> _verifyWithPhoneOTP(
       Map<String, dynamic> addressMap,
       ) async {
-
-    final TextEditingController otpController = TextEditingController();
+    final TextEditingController otpController =
+    TextEditingController();
 
     try {
-
-      final response = await http.post(
-        Uri.parse("$backendUrl/send-address-otp"),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "phoneNumber": mobileNumber,
-        }),
+      await AuthService.instance.generatePhoneOTP(
+        phoneNumber: mobileNumber,
       );
-
-      if (response.statusCode != 200) {
-        throw Exception("Failed to send OTP");
-      }
-
     } catch (e) {
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Failed to send OTP\n$e"),
+            content: Text(
+              'Failed to send OTP.\n$e',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -658,39 +647,45 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       return;
     }
 
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-
         bool isLoading = false;
-        String error = "";
+        String error = '';
 
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-
+          builder: (
+              context,
+              setDialogState,
+              ) {
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius:
+                BorderRadius.circular(16),
               ),
-
               title: const Row(
                 children: [
-                  Icon(Icons.sms,color: Colors.green),
-                  SizedBox(width:8),
-                  Text("Phone Verification"),
+                  Icon(
+                    Icons.sms,
+                    color: Colors.green,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Phone Verification',
+                  ),
                 ],
               ),
-
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-
-                  Text(
-                    "An OTP will be sent to",
+                  const Text(
+                    'A verification code was sent to:',
                   ),
 
-                  const SizedBox(height:8),
+                  const SizedBox(height: 8),
 
                   Text(
                     mobileNumber,
@@ -700,121 +695,154 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                     ),
                   ),
 
-                  const SizedBox(height:20),
+                  const SizedBox(height: 20),
 
                   TextField(
-                    controller: otpController,
-                    keyboardType: TextInputType.number,
+                    controller:
+                    otpController,
+                    keyboardType:
+                    TextInputType.number,
                     maxLength: 6,
                     textAlign: TextAlign.center,
-                    decoration: const InputDecoration(
-                      hintText: "Enter OTP",
-                      border: OutlineInputBorder(),
-                      counterText: "",
+                    decoration:
+                    const InputDecoration(
+                      hintText:
+                      'Enter 6-digit OTP',
+                      border:
+                      OutlineInputBorder(),
+                      counterText: '',
                     ),
                   ),
 
-                  if(error.isNotEmpty)...[
-                    const SizedBox(height:10),
+                  if (error.isNotEmpty) ...[
+                    const SizedBox(height: 10),
                     Text(
                       error,
-                      style: const TextStyle(color: Colors.red),
-                    )
-                  ]
-
+                      textAlign:
+                      TextAlign.center,
+                      style:
+                      const TextStyle(
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-
               actions: [
-
                 TextButton(
-                  onPressed: (){
-                    Navigator.pop(dialogContext);
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                    Navigator.pop(
+                      dialogContext,
+                    );
                   },
-                  child: const Text("Cancel"),
+                  child:
+                  const Text('Cancel'),
                 ),
 
                 ElevatedButton(
-
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                  style:
+                  ElevatedButton.styleFrom(
+                    backgroundColor:
+                    Colors.green,
                   ),
-
                   onPressed: isLoading
                       ? null
                       : () async {
+                    final otp =
+                    otpController
+                        .text
+                        .trim();
+
+                    if (otp.length != 6) {
+                      setDialogState(() {
+                        error =
+                        'Please enter the 6-digit OTP.';
+                      });
+                      return;
+                    }
 
                     setDialogState(() {
                       isLoading = true;
-                      error = "";
+                      error = '';
                     });
 
-                    final verify = await http.post(
-                      Uri.parse("$backendUrl/verify-address-otp"),
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
-                      body: jsonEncode({
-                        "phoneNumber": mobileNumber,
-                        "otp": otpController.text.trim(),
-                      }),
+                    final verified =
+                    await AuthService
+                        .instance
+                        .verifyPhoneOTP(
+                      phoneNumber:
+                      mobileNumber,
+                      typedOtp: otp,
                     );
 
-                    final body = jsonDecode(verify.body);
-
-                    if (verify.statusCode == 200 &&
-                        body["success"] == true) {
-
-                      await _saveAddressToFirestore(addressMap);
-
-                      if (mounted) {
-                        Navigator.pop(dialogContext);
-                        Navigator.pop(context);
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Address saved successfully."),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-
-                    } else {
-
+                    if (!verified) {
                       setDialogState(() {
-                        error = body["message"] ?? "Invalid OTP";
                         isLoading = false;
+                        error =
+                        'Invalid or expired OTP.';
                       });
-
+                      return;
                     }
 
-                  },
+                    try {
+                      await _saveAddressToFirestore(
+                        addressMap,
+                      );
 
+                      if (!mounted) return;
+
+                      Navigator.pop(
+                        dialogContext,
+                      );
+
+                      Navigator.pop(
+                        context,
+                      );
+
+                      ScaffoldMessenger
+                          .of(context)
+                          .showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Address saved successfully.',
+                          ),
+                          backgroundColor:
+                          Colors.green,
+                        ),
+                      );
+                    } catch (e) {
+                      setDialogState(() {
+                        isLoading = false;
+                        error =
+                        'Failed to save address: $e';
+                      });
+                    }
+                  },
                   child: isLoading
                       ? const SizedBox(
-                    width:18,
-                    height:18,
-                    child: CircularProgressIndicator(
-                      strokeWidth:2,
+                    width: 18,
+                    height: 18,
+                    child:
+                    CircularProgressIndicator(
+                      strokeWidth: 2,
                       color: Colors.white,
                     ),
                   )
                       : const Text(
-                    "Verify",
-                    style: TextStyle(color: Colors.white),
+                    'Verify',
+                    style: TextStyle(
+                      color: Colors.white,
+                    ),
                   ),
-                )
-
+                ),
               ],
-
             );
-
           },
         );
-
       },
     );
-
   }
 
   @override

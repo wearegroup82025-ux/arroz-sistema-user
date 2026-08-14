@@ -1,332 +1,848 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
 
 class AuthService {
   AuthService._privateConstructor();
-  static final AuthService instance = AuthService._privateConstructor();
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final AuthService instance =
+  AuthService._privateConstructor();
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-  User? get currentUser => _auth.currentUser;
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
 
-  http.Client _getHttpClient() {
-    if (kIsWeb) {
-      return http.Client();
-    }
-    final ioClient = HttpClient();
-    ioClient.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-    ioClient.connectionTimeout = const Duration(seconds: 15);
-    return IOClient(ioClient);
-  }
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
 
-  Future<bool> _isEmailDomainValid(String email) async {
+  Stream<User?> get authStateChanges =>
+      _auth.authStateChanges();
+
+  User? get currentUser =>
+      _auth.currentUser;
+
+
+  // ============================================================
+  // TEXTBEE CONFIGURATION
+  // ============================================================
+
+  // PALITAN MO LANG ANG 2 VALUES NA ITO
+  static const String _textBeeApiKey =
+      '3976128d-92db-428f-8e94-8ac21cb5b1b4';
+
+  static const String _textBeeDeviceId =
+      '6a6c26d3cd8a35b23c02a931';
+
+  static const String _textBeeBaseUrl =
+      'https://api.textbee.dev/api/v1/gateway/devices';
+
+  // ============================================================
+  // EMAIL VALIDATION
+  // ============================================================
+
+  Future<bool> _isEmailDomainValid(
+      String email,
+      ) async {
     try {
-      final parts = email.split('@');
-      if (parts.length != 2) return false;
-      final domain = parts[1].trim();
-      final result = await InternetAddress.lookup(domain);
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      final parts =
+      email.split('@');
+
+      if (parts.length != 2) {
+        return false;
+      }
+
+      final domain =
+      parts[1].trim();
+
+      final result =
+      await InternetAddress.lookup(
+        domain,
+      );
+
+      return result.isNotEmpty &&
+          result[0]
+              .rawAddress
+              .isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
-  // --- PHONE OTP FUNCTIONS ---
-  Future<String> sendPhoneOTPWithTextBee({
-    required String phoneNumber,
-  }) async {
-    try {
-      // I-convert lagi sa 09XXXXXXXXX
-      String cleanPhone = phoneNumber.replaceAll(RegExp(r'\D'), '');
+  // ============================================================
+// GENERATE EMAIL OTP
+// ============================================================
 
-      if (cleanPhone.startsWith('63')) {
-        cleanPhone = '0${cleanPhone.substring(2)}';
-      }
-
-      if (!cleanPhone.startsWith('09') || cleanPhone.length != 11) {
-        throw Exception("Invalid cellphone number.");
-      }
-
-      final existingUser = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: cleanPhone)
-          .limit(1)
-          .get();
-
-      if (existingUser.docs.isNotEmpty) {
-        throw Exception("May umiiral nang account gamit ang numerong ito.");
-      }
-
-      final otp = List.generate(
-        6,
-            (_) => Random().nextInt(10).toString(),
-      ).join();
-
-      await _firestore.collection('phone_otps').doc(cleanPhone).set({
-        'otp': otp,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(
-          DateTime.now().add(const Duration(minutes: 1)),
-        ),
-      });
-
-      const apiKey = '3976128d-92db-428f-8e94-8ac21cb5b1b4';
-      const deviceId = '6a6c26d3cd8a35b23c02a931';
-
-      final response = await _getHttpClient().post(
-        Uri.parse(
-          'https://api.textbee.dev/api/v1/gateway/devices/$deviceId/send-sms',
-        ),
-        headers: {
-          'x-api-key': apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          "recipients": [cleanPhone],
-          "message":
-          "Your Arroz OTP code is: $otp. Valid for 1 minute only.",
-        }),
-      );
-
-      if (response.statusCode != 200 &&
-          response.statusCode != 201) {
-        throw Exception("Hindi maipadala ang SMS.");
-      }
-
-      return otp;
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<String> sendPhoneOTPWithSemaphore({required String phoneNumber}) async {
-    return await sendPhoneOTPWithTextBee(phoneNumber: phoneNumber);
-  }
-
-  Future<bool> verifyPhoneOTP({required String phoneNumber, required String typedOtp}) async {
-    try {
-      final doc = await _firestore.collection('phone_otps').doc(phoneNumber.trim()).get();
-      if (!doc.exists) return false;
-
-      final data = doc.data();
-      if (data == null) return false;
-
-      final String savedOtp = data['otp'] ?? '';
-      final Timestamp? expiresAtTimestamp = data['expiresAt'] as Timestamp?;
-
-      if (expiresAtTimestamp == null) return false;
-
-      DateTime expiresAt = expiresAtTimestamp.toDate();
-      if (DateTime.now().isAfter(expiresAt)) {
-        await _firestore.collection('phone_otps').doc(phoneNumber.trim()).delete();
-        return false; 
-      }
-
-      if (savedOtp == typedOtp.trim()) {
-        await _firestore.collection('phone_otps').doc(phoneNumber.trim()).delete();
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<UserCredential> registerWithPhone({
-    required String phoneNumber,
+  Future<String> generateAndSaveEmailOTP({
     required String email,
-    required String password,
+    required String name,
+    String reason = 'Registration',
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
-    final emailRegex =
-    RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    // ----------------------------------------------------------
+    // EMAIL FORMAT
+    // ----------------------------------------------------------
+
+    final emailRegex = RegExp(
+      r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,}$',
+    );
 
     if (!emailRegex.hasMatch(cleanEmail)) {
-      throw Exception("Maling format ng email address.");
-    }
-
-    final cleanPhone = normalizePhone(phoneNumber);
-
-    // Check kung existing na ang email sa Firebase Authentication
-    final methods = await _auth.fetchSignInMethodsForEmail(cleanEmail);
-
-    if (methods.isNotEmpty) {
       throw Exception(
-        "May account na gamit ang email na ito.",
+        'Maling format ng email address.',
       );
     }
 
-    // Firebase Authentication will now use the REAL email.
-    return await _auth.createUserWithEmailAndPassword(
-      email: cleanEmail,
-      password: password,
-    );
-  }
+    // ----------------------------------------------------------
+    // EMAIL DOMAIN CHECK
+    // ----------------------------------------------------------
 
-  Future<UserCredential> loginWithPhone({
-    required String phoneNumber,
-    required String password,
-  }) async {
+    final domainExists = await _isEmailDomainValid(cleanEmail);
 
-    String cleanPhone = normalizePhone(phoneNumber);
-
-    final fakeEmail =
-        "$cleanPhone@carrotcarper.internal";
-
-    return await _auth.signInWithEmailAndPassword(
-      email: fakeEmail,
-      password: password,
-    );
-  }
-
-  String normalizePhone(String phone) {
-    String clean = phone.replaceAll(RegExp(r'\D'), '');
-
-    if (clean.startsWith('09')) {
-      clean = '63${clean.substring(1)}';
-    } else if (clean.startsWith('9') && clean.length == 10) {
-      clean = '63$clean';
-    } else if (clean.startsWith('639')) {
-      // already normalized
-    } else {
-      throw Exception("Invalid phone number.");
+    if (!domainExists) {
+      throw Exception(
+        'Hindi umiiral ang email domain na ito.',
+      );
     }
 
-    return clean;
-  }
+    // ----------------------------------------------------------
+    // CHECK EXISTING USER
+    // ----------------------------------------------------------
 
-  // --- EMAIL OTP GENERATOR WITH DIRECT FIRESTORE EXISTENCE CHECK ---
-  Future<String> generateAndSaveEmailOTP({
-    required String email, 
-    required String name,
-    String reason = "Registration",
-  }) async {
-    String cleanEmail = email.trim().toLowerCase();
+    if (reason == 'Registration') {
+      try {
+        final existingEmailDoc = await _firestore
+            .collection('users')
+            .where(
+          'email',
+          isEqualTo: cleanEmail,
+        )
+            .limit(1)
+            .get();
 
-    // 1. Valid Format Check
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(cleanEmail)) {
-      throw Exception("Maling format ng email address.");
-    }
+        if (existingEmailDoc.docs.isNotEmpty) {
+          throw Exception(
+            'May nakarehistro nang account gamit ang email na ito.',
+          );
+        }
+      } catch (e) {
+        if (e is Exception) {
+          rethrow;
+        }
 
-    // 2. Domain Check
-    bool isDomainExist = await _isEmailDomainValid(cleanEmail);
-    if (!isDomainExist) {
-      throw Exception("Hindi umiiral ang email domain na ito.");
-    }
+        debugPrint(
+          'Firestore email check error: $e',
+        );
+      }
 
-    // 3. DIRECT FIRESTORE CHECK: Titingnan sa 'users' collection kung may kaparehong email
-    if (reason == "Registration") {
-      final existingEmailDoc = await _firestore
-          .collection('users')
-          .where('email', isEqualTo: cleanEmail)
-          .limit(1)
-          .get();
+      try {
+        final methods = await _auth
+            .fetchSignInMethodsForEmail(
+          cleanEmail,
+        );
 
-      if (existingEmailDoc.docs.isNotEmpty) {
-        throw Exception("May nakarehistro nang account gamit ang email na ito.");
+        if (methods.isNotEmpty) {
+          throw Exception(
+            'May existing account na gamit ang email na ito.',
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        debugPrint(
+          'Firebase email existence check: ${e.code}',
+        );
       }
     }
 
+    // ----------------------------------------------------------
+    // GENERATE OTP
+    // ----------------------------------------------------------
+
     final random = Random();
-    String otp = List.generate(6, (_) => random.nextInt(10).toString()).join();
 
-    String senderEmail = 'wearegroup82025@gmail.com'; 
-    String appPassword = 'ygyziuokfrdxqrfd'; 
+    final otp = List.generate(
+      6,
+          (_) => random.nextInt(10).toString(),
+    ).join();
 
-    final smtpServer = gmail(senderEmail, appPassword);
-    
-    String emailSubject = '[Arroz] OTP Code para sa Pagrehistro ng Account';
-    String badgeTitle = 'ACCOUNT REGISTRATION';
-    String emailDescription = 'Malugod ka naming tinatanggap sa Arroz! Gamitin ang OTP code sa ibaba upang makumpleto ang pagrehistro:';
+    debugPrint(
+      'Generated OTP for $cleanEmail: $otp',
+    );
+
+    // ==========================================================
+    // GMAIL SMTP
+    // ==========================================================
+
+    const senderEmail = 'wearegroup82025@gmail.com';
+
+    const appPassword = 'ygyziuokfrdxqrfd';
+
+    final smtpServer = gmail(
+      senderEmail,
+      appPassword,
+    );
+
+    // ----------------------------------------------------------
+    // EMAIL CONTENT
+    // ----------------------------------------------------------
 
     final message = Message()
-      ..from = Address(senderEmail, 'Arroz Platform Support')
+      ..from = Address(
+        senderEmail,
+        'Arroz Platform Support',
+      )
       ..recipients.add(cleanEmail)
-      ..subject = emailSubject
-      ..text = 'Magandang araw $name,\n\nAng iyong verification code ay: $otp.\n\nExpire sa loob ng 1 minuto.'
-      ..html = """
-      <!DOCTYPE html>
-      <html>
-      <body style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 20px;">
-        <div style="max-width: 500px; margin: 0 auto; background: #ffffff; padding: 20px; border-radius: 10px;">
-          <h2 style="color: #0F5132;">🌱 ARROZ Support</h2>
-          <p>$emailDescription</p>
-          <div style="background: #e8f5e9; padding: 15px; text-align: center; font-size: 28px; font-weight: bold; color: #0F5132; letter-spacing: 5px;">
-            $otp
-          </div>
-          <p style="font-size: 12px; color: #666; margin-top: 15px;">Valid for 1 minute only. Do not share.</p>
-        </div>
-      </body>
-      </html>
-      """;
+      ..subject = '[Arroz] Your Verification Code'
+      ..text = '''
+Magandang araw $name,
+
+Ang iyong Arroz verification code ay:
+
+$otp
+
+Ang code na ito ay valid lamang sa loob ng 1 minuto.
+
+Huwag ibahagi ang OTP sa ibang tao.
+
+Salamat,
+Arroz Platform Support
+'''
+      ..html = '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+</head>
+
+<body style="
+  margin:0;
+  padding:20px;
+  background:#f4f6f8;
+  font-family:Arial,sans-serif;
+">
+
+<div style="
+  max-width:500px;
+  margin:auto;
+  background:white;
+  padding:30px;
+  border-radius:16px;
+">
+
+<h2 style="
+  color:#0F5132;
+  margin-top:0;
+">
+🌱 ARROZ
+</h2>
+
+<p>
+Magandang araw <strong>$name</strong>,
+</p>
+
+<p>
+Gamitin ang verification code sa ibaba upang
+makumpleto ang iyong registration.
+</p>
+
+<div style="
+  margin:25px 0;
+  padding:20px;
+  background:#E8F5E9;
+  border-radius:12px;
+  text-align:center;
+">
+
+<div style="
+  font-size:13px;
+  color:#64748B;
+  margin-bottom:10px;
+">
+YOUR VERIFICATION CODE
+</div>
+
+<div style="
+  font-size:34px;
+  font-weight:bold;
+  letter-spacing:8px;
+  color:#0F5132;
+">
+$otp
+</div>
+
+</div>
+
+<p style="
+  color:#64748B;
+  font-size:13px;
+">
+This verification code expires in 1 minute.
+</p>
+
+<p style="
+  color:#64748B;
+  font-size:13px;
+">
+Huwag ibahagi ang code na ito sa ibang tao.
+</p>
+
+<hr style="
+  border:none;
+  border-top:1px solid #eee;
+  margin:25px 0;
+">
+
+<p style="
+  color:#64748B;
+  font-size:12px;
+">
+Arroz Platform Support
+</p>
+
+</div>
+
+</body>
+</html>
+''';
+
+    // ==========================================================
+    // SEND EMAIL
+    // ==========================================================
 
     try {
-      // Subukang magpadala via SMTP. Kapag mali ang mailbox, papasok ito sa Catch Block
-      await send(message, smtpServer);
+      debugPrint(
+        'Attempting to send OTP email to $cleanEmail...',
+      );
 
-      DateTime now = DateTime.now();
-      DateTime expirationTime = now.add(const Duration(minutes: 1));
+      final sendReport = await send(
+        message,
+        smtpServer,
+      );
 
-      await _firestore.collection('email_otps').doc(cleanEmail).set({
-        'otp': otp,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(expirationTime),
-      });
-
-      return otp;
+      debugPrint(
+        'OTP EMAIL SENT SUCCESSFULLY: $sendReport',
+      );
     } on MailerException catch (e) {
-      debugPrint("Mailer Error: $e");
-      throw Exception("Hindi maipadala ang email. Siguraduhing umiiral ang mailbox.");
+      debugPrint(
+        '================ MAILER ERROR ================',
+      );
+
+      debugPrint(
+        e.toString(),
+      );
+
+      for (final problem in e.problems) {
+        debugPrint(
+          'Mailer problem: ${problem.code}',
+        );
+
+        debugPrint(
+          'Mailer detail: ${problem.msg}',
+        );
+      }
+
+      debugPrint(
+        '===============================================',
+      );
+
+      throw Exception(
+        'Hindi maipadala ang OTP email. '
+            'Pakisuri ang Gmail App Password at SMTP configuration.',
+      );
     } catch (e) {
-      debugPrint("Sending Exception: $e");
+      debugPrint(
+        'EMAIL SEND ERROR: $e',
+      );
+
+      throw Exception(
+        'Nagkaroon ng problema sa pagpapadala ng OTP email.',
+      );
+    }
+
+    // ==========================================================
+    // SAVE OTP TO FIRESTORE
+    // ==========================================================
+
+    final expirationTime = DateTime.now().add(
+      const Duration(minutes: 1),
+    );
+
+    await _firestore
+        .collection('email_otps')
+        .doc(cleanEmail)
+        .set({
+      'otp': otp,
+      'email': cleanEmail,
+      'createdAt': FieldValue.serverTimestamp(),
+      'expiresAt': Timestamp.fromDate(
+        expirationTime,
+      ),
+    });
+
+    debugPrint(
+      'OTP saved to Firestore: email_otps/$cleanEmail',
+    );
+
+    return otp;
+  }
+
+  // ============================================================
+  // VERIFY EMAIL OTP
+  // ============================================================
+
+  Future<bool> verifyEmailOTP({
+    required String email,
+    required String typedOtp,
+  }) async {
+    try {
+      final cleanEmail =
+      email.trim().toLowerCase();
+
+      final doc =
+      await _firestore
+          .collection('email_otps')
+          .doc(cleanEmail)
+          .get();
+
+      if (!doc.exists) {
+        return false;
+      }
+
+      final data =
+      doc.data();
+
+      if (data == null) {
+        return false;
+      }
+
+      final savedOtp =
+          data['otp']
+              ?.toString() ??
+              '';
+
+      final expiresAt =
+      data['expiresAt']
+      as Timestamp?;
+
+      if (expiresAt == null) {
+        return false;
+      }
+
+      // --------------------------------------------------------
+      // EXPIRED
+      // --------------------------------------------------------
+
+      if (DateTime.now()
+          .isAfter(
+        expiresAt.toDate(),
+      )) {
+        await _firestore
+            .collection(
+          'email_otps',
+        )
+            .doc(cleanEmail)
+            .delete();
+
+        return false;
+      }
+
+      // --------------------------------------------------------
+      // WRONG OTP
+      // --------------------------------------------------------
+
+      if (savedOtp !=
+          typedOtp.trim()) {
+        return false;
+      }
+
+      // --------------------------------------------------------
+      // DELETE OTP AFTER SUCCESS
+      // --------------------------------------------------------
+
+      await _firestore
+          .collection('email_otps')
+          .doc(cleanEmail)
+          .delete();
+
+      return true;
+    } catch (e) {
+      debugPrint(
+        'verifyEmailOTP error: $e',
+      );
+
+      return false;
+    }
+  }
+
+  // ============================================================
+  // CREATE FIREBASE EMAIL ACCOUNT
+  // ============================================================
+
+  Future<UserCredential>
+  registerWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    return await _auth
+        .createUserWithEmailAndPassword(
+      email:
+      email.trim().toLowerCase(),
+      password: password,
+    );
+  }
+
+  // ============================================================
+  // LOGIN WITH EMAIL
+  // ============================================================
+
+  Future<UserCredential>
+  loginWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    return await _auth
+        .signInWithEmailAndPassword(
+      email:
+      email.trim().toLowerCase(),
+      password: password,
+    );
+  }
+
+  // ============================================================
+  // RESET PASSWORD
+  // ============================================================
+
+  Future<void>
+  resetPasswordAfterEmailOTP({
+    required String email,
+    required String newPassword,
+  }) async {
+    final cleanEmail =
+    email.trim().toLowerCase();
+
+    if (newPassword.length < 8) {
+      throw Exception(
+        'Ang password ay dapat hindi bababa sa 8 characters.',
+      );
+    }
+
+    try {
+      final userQuery =
+      await _firestore
+          .collection('users')
+          .where(
+        'email',
+        isEqualTo: cleanEmail,
+      )
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isEmpty) {
+        throw Exception(
+          'Hindi makita ang account.',
+        );
+      }
+
+      final userData =
+      userQuery.docs.first.data();
+
+      final uid =
+      userData['uid'];
+
+      if (uid == null ||
+          uid.toString().isEmpty) {
+        throw Exception(
+          'Walang Firebase UID ang account na ito.',
+        );
+      }
+
+      await _auth
+          .sendPasswordResetEmail(
+        email: cleanEmail,
+      );
+    } on FirebaseAuthException catch (e) {
+      debugPrint(
+        'PASSWORD RESET FIREBASE ERROR: ${e.code}',
+      );
+
+      throw Exception(
+        'Hindi ma-reset ang password. Subukan muli.',
+      );
+    } catch (e) {
+      debugPrint(
+        'PASSWORD RESET ERROR: $e',
+      );
+
       rethrow;
     }
   }
 
-  Future<bool> verifyEmailOTP({required String email, required String typedOtp}) async {
+  // ============================================================
+  // TEXTBEE - NORMALIZE PHILIPPINE PHONE NUMBER
+  // ============================================================
+
+  String normalizePhilippinePhone(String phone) {
+    String cleaned = phone
+        .trim()
+        .replaceAll(RegExp(r'[\s\-()]'), '');
+
+    // 09171234567 -> +639171234567
+    if (cleaned.startsWith('09') &&
+        cleaned.length == 11) {
+      return '+63${cleaned.substring(1)}';
+    }
+
+    // 639171234567 -> +639171234567
+    if (cleaned.startsWith('63') &&
+        cleaned.length == 12) {
+      return '+$cleaned';
+    }
+
+    // +639171234567
+    if (cleaned.startsWith('+63') &&
+        cleaned.length == 13) {
+      return cleaned;
+    }
+
+    throw Exception(
+      'Invalid Philippine mobile number. '
+          'Gamitin ang format na 09XXXXXXXXX.',
+    );
+  }
+
+  // ============================================================
+  // TEXTBEE - SEND SMS
+  // ============================================================
+
+  Future<void> sendTextBeeSMS({
+    required String phoneNumber,
+    required String message,
+  }) async {
+    final phone = normalizePhilippinePhone(
+      phoneNumber,
+    );
+
+    if (_textBeeApiKey == 'YOUR_TEXTBEE_API_KEY' ||
+        _textBeeDeviceId == 'YOUR_TEXTBEE_DEVICE_ID') {
+      throw Exception(
+        'Hindi pa naka-configure ang TextBee API Key at Device ID.',
+      );
+    }
+
+    final url =
+        '$_textBeeBaseUrl/$_textBeeDeviceId/send-sms';
+
     try {
-      final doc = await _firestore.collection('email_otps').doc(email.trim().toLowerCase()).get();
-      if (!doc.exists) return false;
+      debugPrint(
+        'TEXTBEE: Sending SMS to $phone',
+      );
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': _textBeeApiKey,
+        },
+        body: jsonEncode({
+          'recipients': [phone],
+          'message': message,
+        }),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+      );
+
+      debugPrint(
+        'TEXTBEE STATUS: ${response.statusCode}',
+      );
+
+      debugPrint(
+        'TEXTBEE RESPONSE: ${response.body}',
+      );
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        throw Exception(
+          'TextBee failed '
+              '(${response.statusCode}): ${response.body}',
+        );
+      }
+
+      debugPrint(
+        'TEXTBEE: SMS accepted successfully.',
+      );
+    } catch (e) {
+      debugPrint(
+        'TEXTBEE SEND ERROR: $e',
+      );
+
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // TEXTBEE - GENERATE PHONE OTP
+  // ============================================================
+
+  Future<String> generatePhoneOTP({
+    required String phoneNumber,
+  }) async {
+    final phone =
+    normalizePhilippinePhone(phoneNumber);
+
+    final random = Random();
+
+    final otp = List.generate(
+      6,
+          (_) => random.nextInt(10).toString(),
+    ).join();
+
+    final expiresAt =
+    DateTime.now().add(
+      const Duration(minutes: 5),
+    );
+
+    // SAVE OTP FIRST
+    await _firestore
+        .collection('phone_otps')
+        .doc(phone)
+        .set({
+      'phoneNumber': phone,
+      'otp': otp,
+      'createdAt':
+      FieldValue.serverTimestamp(),
+      'expiresAt':
+      Timestamp.fromDate(expiresAt),
+    });
+
+    try {
+      await sendTextBeeSMS(
+        phoneNumber: phone,
+        message:
+        'Arroz verification code: $otp\n\n'
+            'Valid for 5 minutes. '
+            'Huwag ibahagi ang code na ito.',
+      );
+
+      debugPrint(
+        'PHONE OTP SENT: $phone',
+      );
+
+      return otp;
+    } catch (e) {
+      // DELETE OTP IF SMS FAILED
+      await _firestore
+          .collection('phone_otps')
+          .doc(phone)
+          .delete();
+
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // TEXTBEE - VERIFY PHONE OTP
+  // ============================================================
+
+  Future<bool> verifyPhoneOTP({
+    required String phoneNumber,
+    required String typedOtp,
+  }) async {
+    try {
+      final phone =
+      normalizePhilippinePhone(phoneNumber);
+
+      final otp =
+      typedOtp.trim();
+
+      if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
+        return false;
+      }
+
+      final doc =
+      await _firestore
+          .collection('phone_otps')
+          .doc(phone)
+          .get();
+
+      if (!doc.exists) {
+        debugPrint(
+          'PHONE OTP: No OTP found.',
+        );
+
+        return false;
+      }
 
       final data = doc.data();
-      if (data == null) return false;
 
-      final String savedOtp = data['otp'] ?? '';
-      final Timestamp? expiresAtTimestamp = data['expiresAt'] as Timestamp?;
-
-      if (expiresAtTimestamp == null) return false;
-
-      DateTime expiresAt = expiresAtTimestamp.toDate();
-      if (DateTime.now().isAfter(expiresAt)) {
-        await _firestore.collection('email_otps').doc(email.trim().toLowerCase()).delete();
-        return false; 
+      if (data == null) {
+        return false;
       }
 
-      if (savedOtp == typedOtp.trim()) {
-        await _firestore.collection('email_otps').doc(email.trim().toLowerCase()).delete();
-        return true;
+      final savedOtp =
+          data['otp']?.toString() ?? '';
+
+      final expiresAt =
+      data['expiresAt'] as Timestamp?;
+
+      if (expiresAt == null) {
+        return false;
       }
-      return false;
+
+      // EXPIRED
+      if (DateTime.now().isAfter(
+        expiresAt.toDate(),
+      )) {
+        await _firestore
+            .collection('phone_otps')
+            .doc(phone)
+            .delete();
+
+        debugPrint(
+          'PHONE OTP: OTP expired.',
+        );
+
+        return false;
+      }
+
+      // WRONG OTP
+      if (savedOtp != otp) {
+        debugPrint(
+          'PHONE OTP: Wrong OTP.',
+        );
+
+        return false;
+      }
+
+      // DELETE AFTER SUCCESS
+      await _firestore
+          .collection('phone_otps')
+          .doc(phone)
+          .delete();
+
+      debugPrint(
+        'PHONE OTP: Successfully verified.',
+      );
+
+      return true;
     } catch (e) {
+      debugPrint(
+        'VERIFY PHONE OTP ERROR: $e',
+      );
+
       return false;
     }
   }
 
-  Future<UserCredential> registerWithEmail({required String email, required String password}) async {
-    return await _auth.createUserWithEmailAndPassword(email: email.trim().toLowerCase(), password: password.trim());
-  }
+  // ============================================================
+  // LOGOUT
+  // ============================================================
 
   Future<void> logout() async {
     await _auth.signOut();

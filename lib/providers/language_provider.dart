@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 enum AppLanguage {
   tagalog,
@@ -10,20 +10,32 @@ class LanguageProvider extends ChangeNotifier {
 
   AppLanguage get language => _language;
 
+  bool get isTagalog => _language == AppLanguage.tagalog;
+
   bool get isEnglish => _language == AppLanguage.english;
 
-  void toggleLanguage() {
-    if (_language == AppLanguage.tagalog) {
-      _language = AppLanguage.english;
-    } else {
-      _language = AppLanguage.tagalog;
-    }
+  String get languageName {
+    switch (_language) {
+      case AppLanguage.tagalog:
+        return "Tagalog";
 
-    notifyListeners();
+      case AppLanguage.english:
+        return "English";
+    }
   }
 
   void setLanguage(AppLanguage language) {
+    if (_language == language) return;
+
     _language = language;
+    notifyListeners();
+  }
+
+  void toggleLanguage() {
+    _language = _language == AppLanguage.tagalog
+        ? AppLanguage.english
+        : AppLanguage.tagalog;
+
     notifyListeners();
   }
 }

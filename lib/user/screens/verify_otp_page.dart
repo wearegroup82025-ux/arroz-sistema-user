@@ -1,16 +1,17 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
 import '../../services/auth/auth.service.dart';
 import 'homeuser_page.dart';
-import 'create_phone_password_page.dart';
 
 class ArrozTheme {
-  static const Color primary = Color(0xFF0F5132); // Deep Emerald
+  static const Color primary = Color(0xFF0F5132);
   static const Color primaryLight = Color(0xFF2D8A56);
-  static const Color accent = Color(0xFFD1E7DD); // Soft Mint
-  static const Color bg = Color(0xFFFBFBF9); // Eye-friendly off-white
+  static const Color accent = Color(0xFFD1E7DD);
+  static const Color bg = Color(0xFFFBFBF9);
   static const Color cardBg = Colors.white;
   static const Color textMain = Color(0xFF1E293B);
   static const Color textMuted = Color(0xFF64748B);
@@ -18,499 +19,1158 @@ class ArrozTheme {
 }
 
 class VerifyOtpPage extends StatefulWidget {
-  final String phoneNumber; 
-  final String verificationId;
-  final bool isEmailMode;
-  final String? passwordForEmail;
-  final String? name;
-  final String? phone;
-  final String? address;
-  final String initialLanguage;
   final String email;
+
+  final String lastName;
+  final String firstName;
+  final String middleInitial;
+
+  final String? passwordForEmail;
 
   const VerifyOtpPage({
     super.key,
-    required this.phoneNumber,
-    required this.verificationId,
-    required this.isEmailMode,
-    this.passwordForEmail,
-    required this.name,
     required this.email,
-    required this.phone,
-    required this.address,
-    this.initialLanguage = 'Tagalog',
+    required this.lastName,
+    required this.firstName,
+    required this.middleInitial,
+    this.passwordForEmail,
   });
 
   @override
   State<VerifyOtpPage> createState() => _VerifyOtpPageState();
 }
 
-class _VerifyOtpPageState extends State<VerifyOtpPage> with WidgetsBindingObserver {
-  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
-  
-  bool _isLoading = false;
-  int _secondsRemaining = 60;
-  Timer? _timer;
-  bool _canResend = false;
-  late String _currentLanguage;
+class _VerifyOtpPageState extends State<VerifyOtpPage> {
+  final TextEditingController _otpController =
+  TextEditingController();
 
-  final Map<String, Map<String, String>> _txt = {
-    'English': {
-      'title': 'Verify Your Account',
-      'subEmail': 'Enter the 6-digit code sent to your email address:',
-      'subPhone': 'Enter the 6-digit code sent to your phone number:',
-      'resendWait': 'Resend code in ',
-      'resendBtn': 'Resend OTP Code',
-      'verifyBtn': 'VERIFY ACCOUNT',
-      'invalidFormat': 'Invalid format. Only numbers are allowed.',
-      'wrongEmailCode': 'Incorrect code. Please check the code sent to your email.',
-      'wrongPhoneCode': 'Incorrect SMS code. Please check your text messages.',
-      'errorVerify': 'Verification failed. Please try again.',
-      'resendSuccessEmail': 'A new code has been sent to your email.',
-      'resendSuccessPhone': 'A new SMS code has been sent to your phone.',
-      'resendError': 'Unable to resend code at this time.',
-    },
-    'Tagalog': {
-      'title': 'Kumpirmahin ang Account',
-      'subEmail': 'Ilagay ang 6-digit code na ipinadala sa iyong email address:',
-      'subPhone': 'Ilagay ang 6-digit code na ipinadala sa iyong cellphone number:',
-      'resendWait': 'Maaaring magpadala muli sa loob ng ',
-      'resendBtn': 'Ipadala Muli ang Code',
-      'verifyBtn': 'I-VERIFY ANG ACCOUNT',
-      'invalidFormat': 'Maling format. Numero lamang ang maaaring ilagay.',
-      'wrongEmailCode': 'Maling code. Pakisuri ang email na pinadala.',
-      'wrongPhoneCode': 'Maling SMS Code. Pakitingnan ang text message sa iyong phone.',
-      'errorVerify': 'Nagkaroon ng problema sa pag-verify. Subukan muli.',
-      'resendSuccessEmail': 'Bagong code ang ipinadala sa iyong email.',
-      'resendSuccessPhone': 'Bagong text message ang ipinadala sa iyong phone.',
-      'resendError': 'Hindi maipadala ang code sa ngayon.',
-    }
-  };
+  final GlobalKey<FormState> _formKey =
+  GlobalKey<FormState>();
+
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
+  Timer? _timer;
+
+  bool _loading = false;
+  bool _resending = false;
+
+  int _secondsRemaining = 60;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _currentLanguage = widget.initialLanguage;
     _startTimer();
-    
-    // WALANG _sendInitialOTP() DITO PARA HINDI MAGPADALA NG PANGDALAWANG OTP!
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkClipboardForCode();
-    });
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _checkClipboardForCode();
-    }
-  }
-
-  Future<void> _checkClipboardForCode() async {
-    try {
-      ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (data != null && data.text != null) {
-        String pasted = data.text!.trim().replaceAll(RegExp(r'\D'), '');
-        if (pasted.length == 6) {
-          _fillCode(pasted);
-        }
-      }
-    } catch (_) {}
-  }
-
-  void _fillCode(String code) {
-    if (code.length != 6) return;
-    for (int i = 0; i < 6; i++) {
-      _controllers[i].text = code[i];
-    }
-    setState(() {});
-    _verifyOTP();
-  }
+  // ============================================================
+  // TIMER
+  // ============================================================
 
   void _startTimer() {
-    if (!mounted) return;
-    setState(() { _secondsRemaining = 60; _canResend = false; });
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_secondsRemaining == 0) {
-        setState(() { _canResend = true; _timer?.cancel(); });
-      } else {
-        setState(() => _secondsRemaining--);
-      }
+
+    setState(() {
+      _secondsRemaining = 60;
     });
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+          (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+
+        if (_secondsRemaining <= 1) {
+          timer.cancel();
+
+          setState(() {
+            _secondsRemaining = 0;
+          });
+        } else {
+          setState(() {
+            _secondsRemaining--;
+          });
+        }
+      },
+    );
   }
 
-  String _getCombinedCode() => _controllers.map((c) => c.text.trim()).join();
+  // ============================================================
+  // VERIFY OTP
+  // ============================================================
 
-  Future<void> _verifyOTP() async {
-    final localized = _txt[_currentLanguage]!;
-    final typedCode = _getCombinedCode();
-    if (typedCode.length < 6) return;
+  Future<void> _verifyOtp() async {
+    if (_loading) return;
 
-    if (!RegExp(r'^\d{6}$').hasMatch(typedCode)) {
-      _showSnackBar(localized['invalidFormat']!, ArrozTheme.error);
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    setState(() => _isLoading = true);
+    await _verifyEmailOtp();
+  }
+
+  // ============================================================
+  // VERIFY EMAIL OTP
+  // ============================================================
+
+  Future<void> _verifyEmailOtp() async {
+    if (_loading) return;
+
+    setState(() {
+      _loading = true;
+    });
 
     try {
-      if (widget.isEmailMode) {
-        bool isCorrect = await AuthService.instance.verifyEmailOTP(
-          email: widget.phoneNumber, 
-          typedOtp: typedCode
+      final email = widget.email.trim().toLowerCase();
+      final typedOtp = _otpController.text.trim();
+
+      debugPrint('================================');
+      debugPrint('VERIFYING EMAIL OTP');
+      debugPrint('Email: $email');
+      debugPrint('OTP: $typedOtp');
+      debugPrint('================================');
+
+      // --------------------------------------------------------
+      // 1. VERIFY OTP
+      // --------------------------------------------------------
+
+      final bool valid =
+      await AuthService.instance.verifyEmailOTP(
+        email: email,
+        typedOtp: typedOtp,
+      );
+
+      if (!valid) {
+        _showNotification(
+          'Maling OTP o nag-expire na ang verification code.',
+          ArrozTheme.error,
         );
 
-        if (isCorrect && widget.passwordForEmail != null) {
-          var userCredential = await AuthService.instance.registerWithEmail(
-            email: widget.phoneNumber, 
-            password: widget.passwordForEmail!
-          );
+        return;
+      }
 
-          await FirebaseFirestore.instance.collection("users").doc(userCredential.user!.uid).set({
-            "uid": userCredential.user!.uid,
-            "name": widget.name ?? "",
-            "phone": widget.phone ?? "",
-            "address": widget.address ?? "",
-            "email": widget.phoneNumber.trim().toLowerCase(),
-            "role": "user",
-            "createdAt": FieldValue.serverTimestamp(),
-          });
+      debugPrint('Email OTP verified successfully.');
 
-          await FirebaseFirestore.instance.collection("notifications").add({
-            "title": "New User",
-            "body": "${widget.name ?? widget.phoneNumber} created a new account.",
-            "type": "user",
-            "isRead": false,
-            "timestamp": FieldValue.serverTimestamp(),
-          });
+      // --------------------------------------------------------
+      // 2. GET PASSWORD
+      // --------------------------------------------------------
 
-          TextInput.finishAutofillContext();
-          _navigateToHome();
-        } else {
-          _showSnackBar(localized['wrongEmailCode']!, ArrozTheme.error);
-        }
-      } else {
-        bool isCorrect = await AuthService.instance.verifyPhoneOTP(
-          phoneNumber: widget.phoneNumber, 
-          typedOtp: typedCode
+      final password = widget.passwordForEmail;
+
+      if (password == null || password.isEmpty) {
+        throw Exception(
+          'Walang password para sa email registration.',
         );
+      }
 
-        if (isCorrect) {
-          final password = await Navigator.push<String>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => CreatePhonePasswordPage(
-                phoneNumber: widget.phoneNumber,
-                email: widget.email,
+      // --------------------------------------------------------
+      // 3. CREATE FIREBASE AUTH ACCOUNT
+      // --------------------------------------------------------
+
+      debugPrint('Creating Firebase email account...');
+
+      final UserCredential userCredential =
+      await AuthService.instance.registerWithEmail(
+        email: email,
+        password: password,
+      );
+
+      final User? firebaseUser = userCredential.user;
+
+      if (firebaseUser == null) {
+        throw Exception(
+          'Hindi makuha ang Firebase user.',
+        );
+      }
+
+      debugPrint(
+        'Firebase account created successfully.',
+      );
+
+      debugPrint(
+        'Firebase UID: ${firebaseUser.uid}',
+      );
+
+      // --------------------------------------------------------
+      // 4. SAVE USER TO FIRESTORE
+      // --------------------------------------------------------
+
+      await _saveUserToFirestore(firebaseUser);
+
+      debugPrint(
+        'Registration completed successfully.',
+      );
+
+      if (!mounted) return;
+
+      _showNotification(
+        'Matagumpay na na-verify ang iyong email at nalikha ang account.',
+        Colors.green.shade700,
+      );
+
+      await Future.delayed(
+        const Duration(milliseconds: 800),
+      );
+
+      if (!mounted) return;
+
+      // --------------------------------------------------------
+      // 5. GO TO HOME
+      // --------------------------------------------------------
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const HomeUserPage(),
+        ),
+            (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      debugPrint(
+        'Firebase Email Error: ${e.code}',
+      );
+
+      if (!mounted) return;
+
+      String message;
+
+      switch (e.code) {
+        case 'email-already-in-use':
+          message =
+          'May existing account na gamit ang email na ito.';
+          break;
+
+        case 'weak-password':
+          message =
+          'Mahina ang password. Gumamit ng mas secure na password.';
+          break;
+
+        case 'invalid-email':
+          message =
+          'Invalid ang email address.';
+          break;
+
+        case 'network-request-failed':
+          message =
+          'Walang internet connection. Pakisuri ang iyong internet.';
+          break;
+
+        case 'too-many-requests':
+          message =
+          'Masyadong maraming attempts. Maghintay muna bago subukan muli.';
+          break;
+
+        case 'operation-not-allowed':
+          message =
+          'Email/Password Authentication ay hindi enabled sa Firebase.';
+          break;
+
+        default:
+          message =
+              e.message ??
+                  'Hindi ma-create ang account.';
+      }
+
+      _showNotification(
+        message,
+        ArrozTheme.error,
+      );
+    } catch (e) {
+      debugPrint(
+        'Email OTP verification error: $e',
+      );
+
+      if (!mounted) return;
+
+      String message = e.toString().replaceFirst(
+        'Exception: ',
+        '',
+      );
+
+      if (message.trim().isEmpty) {
+        message =
+        'May nangyaring error habang vine-verify ang email.';
+      }
+
+      _showNotification(
+        message,
+        ArrozTheme.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // SAVE USER TO FIRESTORE
+  // ============================================================
+
+  Future<void> _saveUserToFirestore(
+      User firebaseUser,
+      ) async {
+    final uid = firebaseUser.uid;
+
+    final userRef =
+    _firestore.collection('users').doc(uid);
+
+    final existingDoc =
+    await userRef.get();
+
+    final String lastName =
+    widget.lastName.trim();
+
+    final String firstName =
+    widget.firstName.trim();
+
+    final String middleInitial =
+    widget.middleInitial.trim();
+
+    final String email =
+    widget.email.trim().toLowerCase();
+
+    // Full name for easier display/search.
+    final String fullName = [
+      firstName,
+      middleInitial,
+      lastName,
+    ].where((value) => value.isNotEmpty).join(' ');
+
+    final Map<String, dynamic> userData = {
+      'uid': uid,
+
+      'lastName': lastName,
+
+      'firstName': firstName,
+
+      'middleInitial': middleInitial,
+
+      'fullName': fullName,
+
+      'email': email,
+
+      'role': 'user',
+
+      'status': 'active',
+
+      'emailVerified': true,
+
+      'updatedAt':
+      FieldValue.serverTimestamp(),
+    };
+
+    if (!existingDoc.exists) {
+      userData['createdAt'] =
+          FieldValue.serverTimestamp();
+    }
+
+    await userRef.set(
+      userData,
+      SetOptions(merge: true),
+    );
+
+    debugPrint(
+      'User saved to Firestore: users/$uid',
+    );
+
+    debugPrint(
+      'Full Name: $fullName',
+    );
+    debugPrint(
+      'Email: $email',
+    );
+  }
+
+  // ============================================================
+  // RESEND OTP
+  // ============================================================
+
+  Future<void> _resendOtp() async {
+    if (_secondsRemaining > 0 ||
+        _resending ||
+        _loading) {
+      return;
+    }
+
+    setState(() {
+      _resending = true;
+    });
+
+    try {
+      final String fullName = [
+        widget.firstName.trim(),
+        widget.middleInitial.trim(),
+        widget.lastName.trim(),
+      ].where((value) => value.isNotEmpty).join(' ');
+
+      debugPrint(
+        'Resending email OTP to: ${widget.email}',
+      );
+
+      await AuthService.instance.generateAndSaveEmailOTP(
+        email: widget.email,
+        name: fullName,
+        reason: 'Registration',
+      );
+
+      if (!mounted) return;
+
+      _otpController.clear();
+
+      _startTimer();
+
+      _showNotification(
+        'Naipadala na ang bagong verification code sa iyong email.',
+        Colors.green.shade700,
+      );
+    } catch (e) {
+      debugPrint(
+        'Resend email OTP error: $e',
+      );
+
+      if (!mounted) return;
+
+      String message =
+      e.toString().replaceFirst(
+        'Exception: ',
+        '',
+      );
+
+      if (message.trim().isEmpty) {
+        message =
+        'Hindi maipadala ang bagong OTP.';
+      }
+
+      _showNotification(
+        message,
+        ArrozTheme.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _resending = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // NOTIFICATION
+  // ============================================================
+
+  void _showNotification(
+      String message,
+      Color color,
+      ) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .clearSnackBars();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: color,
+        behavior:
+        SnackBarBehavior.floating,
+        duration:
+        const Duration(seconds: 4),
+        margin:
+        const EdgeInsets.all(16),
+        shape:
+        RoundedRectangleBorder(
+          borderRadius:
+          BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
+
+  @override
+  Widget build(
+      BuildContext context,
+      ) {
+    return Scaffold(
+      backgroundColor:
+      ArrozTheme.bg,
+
+      appBar: AppBar(
+        backgroundColor:
+        Colors.transparent,
+        elevation: 0,
+
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color:
+            ArrozTheme.textMain,
+            size: 20,
+          ),
+          onPressed: _loading
+              ? null
+              : () {
+            Navigator.pop(
+              context,
+            );
+          },
+        ),
+      ),
+
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints:
+            const BoxConstraints(
+              maxWidth: 450,
+            ),
+
+            child:
+            SingleChildScrollView(
+              padding:
+              const EdgeInsets
+                  .symmetric(
+                horizontal: 24,
+                vertical: 20,
+              ),
+
+              child: Form(
+                key: _formKey,
+
+                child: Column(
+                  crossAxisAlignment:
+                  CrossAxisAlignment
+                      .center,
+
+                  children: [
+                    // ==================================================
+                    // EMAIL ICON
+                    // ==================================================
+
+                    Container(
+                      width: 80,
+                      height: 80,
+
+                      decoration:
+                      const BoxDecoration(
+                        color:
+                        ArrozTheme
+                            .accent,
+                        shape:
+                        BoxShape.circle,
+                      ),
+
+                      child: const Icon(
+                        Icons
+                            .mark_email_read_outlined,
+                        size: 38,
+                        color:
+                        ArrozTheme
+                            .primary,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 24,
+                    ),
+
+                    // ==================================================
+                    // TITLE
+                    // ==================================================
+
+                    const Text(
+                      'Verify Your Email',
+                      textAlign:
+                      TextAlign.center,
+
+                      style:
+                      TextStyle(
+                        fontSize: 27,
+                        fontWeight:
+                        FontWeight.bold,
+                        color:
+                        ArrozTheme
+                            .primary,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 8,
+                    ),
+
+                    const Text(
+                      'Ilagay ang 6-digit verification code na ipinadala sa iyong email.',
+                      textAlign:
+                      TextAlign.center,
+
+                      style:
+                      TextStyle(
+                        fontSize: 14,
+                        color:
+                        ArrozTheme
+                            .textMuted,
+                        height: 1.5,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    // ==================================================
+                    // EMAIL DISPLAY
+                    // ==================================================
+
+                    Container(
+                      width:
+                      double.infinity,
+
+                      padding:
+                      const EdgeInsets
+                          .symmetric(
+                        horizontal: 16,
+                        vertical: 13,
+                      ),
+
+                      decoration:
+                      BoxDecoration(
+                        color:
+                        Colors.white,
+                        borderRadius:
+                        BorderRadius
+                            .circular(
+                          14,
+                        ),
+                        border:
+                        Border.all(
+                          color: Colors
+                              .grey
+                              .shade200,
+                        ),
+                      ),
+
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons
+                                .email_outlined,
+                            color:
+                            ArrozTheme
+                                .primary,
+                            size: 21,
+                          ),
+
+                          const SizedBox(
+                            width: 10,
+                          ),
+
+                          Expanded(
+                            child: Text(
+                              widget.email,
+                              overflow:
+                              TextOverflow
+                                  .ellipsis,
+
+                              style:
+                              const TextStyle(
+                                fontWeight:
+                                FontWeight
+                                    .bold,
+                                color:
+                                ArrozTheme
+                                    .textMain,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    // ==================================================
+                    // NAME DISPLAY
+                    // ==================================================
+
+                    Container(
+                      width:
+                      double.infinity,
+
+                      padding:
+                      const EdgeInsets
+                          .symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+
+                      decoration:
+                      BoxDecoration(
+                        color: ArrozTheme
+                            .accent
+                            .withOpacity(
+                          0.35,
+                        ),
+                        borderRadius:
+                        BorderRadius
+                            .circular(
+                          14,
+                        ),
+                      ),
+
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons
+                                .person_outline_rounded,
+                            color:
+                            ArrozTheme
+                                .primary,
+                            size: 21,
+                          ),
+
+                          const SizedBox(
+                            width: 10,
+                          ),
+
+                          Expanded(
+                            child: Text(
+                              [
+                                widget.firstName
+                                    .trim(),
+                                widget.middleInitial
+                                    .trim(),
+                                widget.lastName
+                                    .trim(),
+                              ]
+                                  .where(
+                                    (value) =>
+                                value
+                                    .isNotEmpty,
+                              )
+                                  .join(' '),
+
+                              style:
+                              const TextStyle(
+                                fontWeight:
+                                FontWeight
+                                    .w600,
+                                color:
+                                ArrozTheme
+                                    .textMain,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 28,
+                    ),
+
+                    // ==================================================
+                    // OTP FIELD
+                    // ==================================================
+
+                    TextFormField(
+                      controller:
+                      _otpController,
+
+                      keyboardType:
+                      TextInputType
+                          .number,
+
+                      textInputAction:
+                      TextInputAction
+                          .done,
+
+                      textAlign:
+                      TextAlign.center,
+
+                      maxLength: 6,
+
+                      enabled:
+                      !_loading,
+
+                      autofocus: true,
+
+                      style:
+                      const TextStyle(
+                        fontSize: 28,
+                        fontWeight:
+                        FontWeight.bold,
+                        letterSpacing: 10,
+                        color:
+                        ArrozTheme
+                            .primary,
+                      ),
+
+                      decoration:
+                      InputDecoration(
+                        counterText: '',
+
+                        hintText:
+                        '000000',
+
+                        hintStyle:
+                        TextStyle(
+                          fontSize: 28,
+                          letterSpacing:
+                          10,
+                          color: Colors
+                              .grey
+                              .shade300,
+                        ),
+
+                        filled: true,
+
+                        fillColor:
+                        Colors.white,
+
+                        contentPadding:
+                        const EdgeInsets
+                            .symmetric(
+                          horizontal: 20,
+                          vertical: 18,
+                        ),
+
+                        enabledBorder:
+                        OutlineInputBorder(
+                          borderRadius:
+                          BorderRadius
+                              .circular(
+                            16,
+                          ),
+                          borderSide:
+                          BorderSide(
+                            color: Colors
+                                .grey
+                                .shade300,
+                          ),
+                        ),
+
+                        focusedBorder:
+                        OutlineInputBorder(
+                          borderRadius:
+                          BorderRadius
+                              .circular(
+                            16,
+                          ),
+                          borderSide:
+                          const BorderSide(
+                            color:
+                            ArrozTheme
+                                .primary,
+                            width: 1.5,
+                          ),
+                        ),
+
+                        errorBorder:
+                        OutlineInputBorder(
+                          borderRadius:
+                          BorderRadius
+                              .circular(
+                            16,
+                          ),
+                          borderSide:
+                          const BorderSide(
+                            color:
+                            ArrozTheme
+                                .error,
+                          ),
+                        ),
+
+                        focusedErrorBorder:
+                        OutlineInputBorder(
+                          borderRadius:
+                          BorderRadius
+                              .circular(
+                            16,
+                          ),
+                          borderSide:
+                          const BorderSide(
+                            color:
+                            ArrozTheme
+                                .error,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+
+                      validator: (value) {
+                        final otp =
+                            value?.trim() ??
+                                '';
+
+                        if (otp.isEmpty) {
+                          return 'Ilagay ang OTP code.';
+                        }
+
+                        if (otp.length != 6) {
+                          return 'Ang OTP ay dapat 6 digits.';
+                        }
+
+                        if (!RegExp(
+                          r'^\d{6}$',
+                        ).hasMatch(otp)) {
+                          return 'Numbers lamang ang OTP.';
+                        }
+
+                        return null;
+                      },
+
+                      onChanged: (value) {
+                        if (value.length == 6 &&
+                            !_loading) {
+                          FocusScope.of(
+                            context,
+                          ).unfocus();
+                        }
+                      },
+
+                      onFieldSubmitted:
+                          (_) {
+                        if (!_loading) {
+                          _verifyOtp();
+                        }
+                      },
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    // ==================================================
+                    // VERIFY BUTTON
+                    // ==================================================
+
+                    SizedBox(
+                      width:
+                      double.infinity,
+                      height: 52,
+
+                      child:
+                      ElevatedButton(
+                        onPressed:
+                        _loading
+                            ? null
+                            : _verifyOtp,
+
+                        style:
+                        ElevatedButton
+                            .styleFrom(
+                          backgroundColor:
+                          ArrozTheme
+                              .primary,
+
+                          disabledBackgroundColor:
+                          ArrozTheme
+                              .primary
+                              .withOpacity(
+                            0.55,
+                          ),
+
+                          shape:
+                          RoundedRectangleBorder(
+                            borderRadius:
+                            BorderRadius
+                                .circular(
+                              16,
+                            ),
+                          ),
+
+                          elevation: 0,
+                        ),
+
+                        child: _loading
+                            ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child:
+                          CircularProgressIndicator(
+                            color: Colors
+                                .white,
+                            strokeWidth:
+                            2,
+                          ),
+                        )
+                            : const Text(
+                          'VERIFY EMAIL',
+                          style:
+                          TextStyle(
+                            color: Colors
+                                .white,
+                            fontSize:
+                            15,
+                            fontWeight:
+                            FontWeight
+                                .bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 24,
+                    ),
+
+                    // ==================================================
+                    // TIMER / RESEND
+                    // ==================================================
+
+                    if (_secondsRemaining > 0)
+                      Text(
+                        'Muling magpadala ng OTP sa $_secondsRemaining segundo',
+                        textAlign:
+                        TextAlign.center,
+
+                        style:
+                        const TextStyle(
+                          color:
+                          ArrozTheme
+                              .textMuted,
+                          fontSize: 13,
+                        ),
+                      )
+                    else
+                      TextButton(
+                        onPressed:
+                        _resending ||
+                            _loading
+                            ? null
+                            : _resendOtp,
+
+                        child: _resending
+                            ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child:
+                          CircularProgressIndicator(
+                            strokeWidth:
+                            2,
+                            color:
+                            ArrozTheme
+                                .primary,
+                          ),
+                        )
+                            : const Text(
+                          'RESEND OTP',
+                          style:
+                          TextStyle(
+                            color:
+                            ArrozTheme
+                                .primary,
+                            fontWeight:
+                            FontWeight
+                                .bold,
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
+                    // ==================================================
+                    // SECURITY MESSAGE
+                    // ==================================================
+
+                    Container(
+                      width:
+                      double.infinity,
+
+                      padding:
+                      const EdgeInsets
+                          .all(16),
+
+                      decoration:
+                      BoxDecoration(
+                        color: ArrozTheme
+                            .accent
+                            .withOpacity(
+                          0.5,
+                        ),
+
+                        borderRadius:
+                        BorderRadius
+                            .circular(
+                          14,
+                        ),
+                      ),
+
+                      child: const Row(
+                        crossAxisAlignment:
+                        CrossAxisAlignment
+                            .start,
+
+                        children: [
+                          Icon(
+                            Icons
+                                .security_rounded,
+                            color:
+                            ArrozTheme
+                                .primary,
+                            size: 20,
+                          ),
+
+                          SizedBox(
+                            width: 10,
+                          ),
+
+                          Expanded(
+                            child: Text(
+                              'Huwag ibahagi ang iyong OTP sa ibang tao. Gamitin lamang ang code na ipinadala sa iyong email.',
+                              style:
+                              TextStyle(
+                                color:
+                                ArrozTheme
+                                    .textMain,
+                                fontSize: 12,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+                  ],
+                ),
               ),
             ),
-          );
-
-          if (password == null) {
-            if (mounted) {
-              setState(() => _isLoading = false);
-            }
-            return;
-          }
-
-          final userCredential = await AuthService.instance.registerWithPhone(
-            phoneNumber: widget.phoneNumber,
-            email: widget.email,
-            password: password,
-          );
-
-          await FirebaseFirestore.instance
-              .collection("users")
-              .doc(userCredential.user!.uid)
-              .set({
-            "uid": userCredential.user!.uid,
-            "name": widget.name ?? "",
-            "phone": widget.phoneNumber,
-            "address": widget.address ?? "",
-            "email": widget.email.trim().toLowerCase(),
-            "role": "user",
-            "createdAt": FieldValue.serverTimestamp(),
-          });
-
-          await FirebaseFirestore.instance.collection("notifications").add({
-            "title": "New User",
-            "body":
-            "${widget.name ?? widget.phoneNumber} created a new account.",
-            "type": "user",
-            "isRead": false,
-            "timestamp": FieldValue.serverTimestamp(),
-          });
-
-          TextInput.finishAutofillContext();
-          _navigateToHome();
-
-          await FirebaseFirestore.instance
-              .collection("users")
-              .doc(userCredential.user!.uid)
-              .set({
-            "uid": userCredential.user!.uid,
-            "name": widget.name ?? "",
-            "phone": widget.phoneNumber,
-            "address": widget.address ?? "",
-            "email": widget.email.trim().toLowerCase(),
-            "role": "user",
-            "createdAt": FieldValue.serverTimestamp(),
-          });
-
-          await FirebaseFirestore.instance.collection("notifications").add({
-            "title": "New User",
-            "body": "${widget.name ?? widget.phoneNumber} created a new account.",
-            "type": "user",
-            "isRead": false,
-            "timestamp": FieldValue.serverTimestamp(),
-          });
-
-          TextInput.finishAutofillContext();
-          _navigateToHome();
-        } else {
-          _showSnackBar(localized['wrongPhoneCode']!, ArrozTheme.error);
-        }
-      }
-    } catch (e) {
-      debugPrint("VERIFY EXCEPTION: $e");
-      _showSnackBar(localized['errorVerify']!, ArrozTheme.error);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _navigateToHome() {
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeUserPage()), (route) => false);
-  }
-
-  void _resendOTP() async {
-    final localized = _txt[_currentLanguage]!;
-    if (!_canResend) return;
-    setState(() => _isLoading = true);
-    
-    try {
-      if (widget.isEmailMode) {
-        await AuthService.instance.generateAndSaveEmailOTP(
-          email: widget.phoneNumber, 
-          name: widget.name ?? "User"
-        );
-        _showSnackBar(localized['resendSuccessEmail']!, Colors.green.shade700);
-      } else {
-        await AuthService.instance.sendPhoneOTPWithSemaphore(phoneNumber: widget.phoneNumber);
-        _showSnackBar(localized['resendSuccessPhone']!, Colors.green.shade700);
-      }
-      _startTimer();
-    } catch (e) {
-      _showSnackBar(localized['resendError']!, ArrozTheme.error);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _showSnackBar(String message, Color color) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(fontWeight: FontWeight.w500)),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
       ),
     );
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
-    for (var c in _controllers) { c.dispose(); }
-    for (var f in _focusNodes) { f.dispose(); }
+    _otpController.dispose();
+
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final localized = _txt[_currentLanguage]!;
-
-    return Scaffold(
-      backgroundColor: ArrozTheme.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: ArrozTheme.textMain, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: ArrozTheme.cardBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _currentLanguage,
-                style: const TextStyle(color: ArrozTheme.textMain, fontWeight: FontWeight.bold, fontSize: 12),
-                onChanged: (v) => setState(() => _currentLanguage = v!),
-                items: ['Tagalog', 'English'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: ArrozTheme.accent,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(color: ArrozTheme.primary.withOpacity(0.12), blurRadius: 16, offset: const Offset(0, 6)),
-                        ],
-                      ),
-                      child: const Icon(Icons.mark_email_read_rounded, size: 36, color: ArrozTheme.primary),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  Text(localized['title']!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: ArrozTheme.primary)),
-                  const SizedBox(height: 8),
-                  
-                  Text(
-                    widget.isEmailMode ? localized['subEmail']! : localized['subPhone']!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.phoneNumber,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: ArrozTheme.textMain, fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  const SizedBox(height: 32),
-
-                  AutofillGroup(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                      decoration: BoxDecoration(
-                        color: ArrozTheme.cardBg,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 12, offset: const Offset(0, 4)),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: List.generate(6, (index) {
-                              return SizedBox(
-                                width: 44,
-                                height: 56,
-                                child: TextFormField(
-                                  controller: _controllers[index],
-                                  focusNode: _focusNodes[index],
-                                  keyboardType: TextInputType.number,
-                                  textAlign: TextAlign.center,
-                                  autofillHints: const [AutofillHints.oneTimeCode],
-                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.primary),
-                                  decoration: InputDecoration(
-                                    counterText: "",
-                                    filled: true,
-                                    fillColor: ArrozTheme.bg,
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderSide: const BorderSide(color: ArrozTheme.primary, width: 2),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(color: Colors.grey.shade300),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  onChanged: (value) {
-                                    // Pagsalo kung nag-paste ng buong 6-digit code
-                                    String cleanValue = value.replaceAll(RegExp(r'\D'), '');
-                                    if (cleanValue.length >= 6) {
-                                      _fillCode(cleanValue.substring(0, 6));
-                                      return;
-                                    }
-
-                                    if (value.isNotEmpty && index < 5) {
-                                      _focusNodes[index + 1].requestFocus();
-                                    }
-                                    if (value.isEmpty && index > 0) {
-                                      _focusNodes[index - 1].requestFocus();
-                                    }
-                                    if (_getCombinedCode().length == 6) {
-                                      _verifyOTP();
-                                    }
-                                  },
-                                ),
-                              );
-                            }),
-                          ),
-                          const SizedBox(height: 24),
-
-                          _canResend
-                              ? TextButton(
-                                  onPressed: _resendOTP,
-                                  child: Text(localized['resendBtn']!, style: const TextStyle(color: ArrozTheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
-                                )
-                              : Text(
-                                  "${localized['resendWait']!}$_secondsRemaining s",
-                                  style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w500),
-                                ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _verifyOTP,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: ArrozTheme.primary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : Text(localized['verifyBtn']!, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

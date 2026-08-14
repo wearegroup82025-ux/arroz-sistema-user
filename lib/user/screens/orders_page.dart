@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-
+import 'order_details_page.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
 import 'profile_page.dart';
@@ -54,6 +54,26 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         ],
       ),
     );
+  }
+
+  String _formatOrderDate(dynamic value) {
+    if (value == null) return '';
+
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    }
+
+    if (date == null) return '';
+
+    return '${date.month.toString().padLeft(2, '0')}/'
+        '${date.day.toString().padLeft(2, '0')}/'
+        '${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -191,65 +211,221 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         bool isCompletedTab = false,
       }) {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
       itemCount: orders.length,
       itemBuilder: (context, index) {
-        final orderData = orders[index].data() as Map<String, dynamic>;
-        final String orderId = orders[index].id;
-        final num totalAmount = orderData['totalAmount'] ?? 0;
-        final String paymentMethod = orderData['paymentMethod'] ?? 'COD';
-        final String status = orderData['orderStatus'] ?? orderData['status'] ?? 'Pending';
-        final bool isPaid = orderData['isPaid'] ?? false;
-        final bool prepareToShip = orderData['prepareToShip'] ?? false;
-        final List<dynamic> itemsList = orderData['items'] ?? [];
+        final orderData =
+        orders[index].data() as Map<String, dynamic>;
 
-        return Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 3, offset: Offset(0, 1))],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        "Order ID: $orderId",
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: ArrozTheme.textSub, fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    _buildStatusBadge(status, isPaid, paymentMethod, prepareToShip),
-                  ],
+        final num totalAmount =
+            orderData['totalAmount'] ?? 0;
+
+        final String paymentMethod =
+            orderData['paymentMethod'] ?? 'COD';
+
+        final String status =
+            orderData['orderStatus'] ??
+                orderData['status'] ??
+                'Pending';
+
+        final bool isPaid =
+            orderData['isPaid'] ?? false;
+
+        final bool prepareToShip =
+            orderData['prepareToShip'] ?? false;
+
+        final List<dynamic> itemsList =
+            orderData['items'] ?? [];
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+
+          // ============================================================
+          // OPEN ORDER DETAILS
+          // ============================================================
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OrderDetailsPage(
+                  orderId: orders[index].id,
+                  orderData: orderData,
                 ),
-                const Divider(height: 20),
-                ...itemsList.map((item) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text("${item['name'] ?? 'Item'} (x${item['quantity'] ?? 1})", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text("₱${((item['price'] ?? 0) * (item['quantity'] ?? 1)).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  );
-                }),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Payment: $paymentMethod", style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
-                    Text("Total: ₱${totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: ArrozTheme.emerald)),
-                  ],
+              ),
+            );
+          },
+
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 3,
+                  offset: Offset(0, 1),
                 ),
               ],
+            ),
+
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+
+                children: [
+
+                  // ======================================================
+                  // STATUS LEFT + ORDER DATE RIGHT
+                  // ======================================================
+                  Row(
+                    mainAxisAlignment:
+                    MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment:
+                    CrossAxisAlignment.center,
+
+                    children: [
+                      // STATUS - LEFT
+                      _buildStatusBadge(
+                        status,
+                        isPaid,
+                        paymentMethod,
+                        prepareToShip,
+                      ),
+
+                      // DATE - RIGHT
+                      Text(
+                        _formatOrderDate(
+                          orderData['createdAt'],
+                        ),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: ArrozTheme.textSub,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const Divider(height: 20),
+
+                  // ======================================================
+                  // ORDER ITEMS
+                  // ======================================================
+                  ...itemsList.map((item) {
+                    final Map<String, dynamic> itemData =
+                    Map<String, dynamic>.from(item);
+
+                    final String itemName =
+                        itemData['name']?.toString() ??
+                            'Item';
+
+                    final num quantity =
+                        itemData['quantity'] ?? 1;
+
+                    final num price =
+                        itemData['price'] ?? 0;
+
+                    final num subtotal =
+                        itemData['subtotal'] ??
+                            (price * quantity);
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 4,
+                      ),
+
+                      child: Row(
+                        mainAxisAlignment:
+                        MainAxisAlignment.spaceBetween,
+
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$itemName (x$quantity)',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          Text(
+                            '₱${subtotal.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+
+                  const SizedBox(height: 10),
+
+                  // ======================================================
+                  // PAYMENT + TOTAL
+                  // ======================================================
+                  Row(
+                    mainAxisAlignment:
+                    MainAxisAlignment.spaceBetween,
+
+                    crossAxisAlignment:
+                    CrossAxisAlignment.center,
+
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Payment: $paymentMethod',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: ArrozTheme.textSub,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      Text(
+                        'Total: ₱${totalAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: ArrozTheme.emerald,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // ======================================================
+                  // TAP INDICATOR
+                  // ======================================================
+                  const SizedBox(height: 8),
+
+                  const Row(
+                    mainAxisAlignment:
+                    MainAxisAlignment.end,
+                    children: [
+                      Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: Colors.black38,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         );

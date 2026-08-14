@@ -2,20 +2,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../services/auth/auth.service.dart';
 import 'homeuser_page.dart';
 import 'registeruser_page.dart';
 
 class ArrozTheme {
-  static const Color primary = Color(0xFF0F5132); // Deep Emerald
+  static const Color primary = Color(0xFF0F5132);
   static const Color primaryLight = Color(0xFF2D8A56);
-  static const Color accent = Color(0xFFD1E7DD); // Soft Mint
-  static const Color bg = Color(0xFFFBFBF9); // Eye-friendly background
+  static const Color accent = Color(0xFFD1E7DD);
+  static const Color bg = Color(0xFFFBFBF9);
   static const Color cardBg = Colors.white;
   static const Color textMain = Color(0xFF1E293B);
   static const Color textMuted = Color(0xFF64748B);
   static const Color error = Color(0xFFDC2626);
-  static const Color warning = Color(0xFFD97706); // Warm Amber
+  static const Color warning = Color(0xFFD97706);
 }
 
 class LoginUserPage extends StatefulWidget {
@@ -27,11 +28,13 @@ class LoginUserPage extends StatefulWidget {
 
 class _LoginUserPageState extends State<LoginUserPage> {
   final _formKey = GlobalKey<FormState>();
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+
   String _currentLanguage = 'Tagalog';
 
   int _failedAttempts = 0;
@@ -40,101 +43,173 @@ class _LoginUserPageState extends State<LoginUserPage> {
   final Map<String, Map<String, String>> _txt = {
     'English': {
       'subtitle': 'Modern Agriculture Platform',
-      'email': 'Email Address / Mobile Number',
+      'email': 'Email Address',
       'password': 'Password',
       'forgotPwd': 'Forgot Password?',
       'btnLogin': 'Sign In',
       'noAccount': 'New to Arroz? ',
       'joinHere': 'Create Account',
-      'valEmail': 'Please enter a valid email address',
+
+      'valEmail': 'Please enter your email address',
       'valPassword': 'Password is required',
+
       'forgotTitle': 'Reset Password',
-      'forgotSub': 'Choose how you want to search and reset your account password:',
-      'forgotSearch': 'SEARCH ACCOUNT',
-      'lockoutMsg': 'Too many failed attempts. Try again in 2 minutes.',
-      'errorAuth': 'Invalid email or password. Please check and try again.',
-      'connErr': 'Unable to connect. Please check your internet.',
+      'forgotSub':
+      'Enter your registered email address to receive an OTP verification code.',
+      'forgotSearch': 'SEND OTP CODE',
+
       'searchHintEmail': 'Enter registered Email Address',
-      'searchHintPhone': 'Enter registered Mobile Number (e.g. 09123456789)',
+
+      'emptySearchWarn':
+      'Please enter your registered email address.',
+
       'accNotFoundTitle': 'Account Not Found',
-      'accNotFoundSub': 'We couldn\'t find any Arroz account linked to that info.',
-      'emptySearchWarn': 'Please enter your registered email or mobile number.',
-      'chooseMethod': 'How do you want to receive your OTP verification code?',
-      'sendEmailLink': 'Send OTP to Email',
-      'sendSmsOtp': 'Send OTP via SMS',
-      'continueBtn': 'SEND OTP CODE',
+      'accNotFoundSub':
+      'We couldn\'t find any Arroz account linked to that email address.',
+
+      'chooseOtpTitle': 'Email Verification',
       'enterOtpTitle': 'Enter 6-Digit OTP',
       'enterOtpSub': 'Enter the verification code sent to ',
+
       'verifyOtpBtn': 'VERIFY OTP',
+
       'invalidOtpTitle': 'Invalid Verification Code',
-      'invalidOtpSub': 'The OTP code you entered is incorrect or expired. Please check and try again.',
+      'invalidOtpSub':
+      'The OTP code you entered is incorrect or expired. Please check and try again.',
+
       'newPassTitle': 'Set New Password',
-      'newPassSub': 'Create a strong new password for your account.',
+      'newPassSub':
+      'Create a strong new password for your account.',
+
       'newPassHint': 'New Password',
       'confirmPassHint': 'Confirm Password',
+
       'savePassBtn': 'UPDATE PASSWORD',
+
       'passNotMatchTitle': 'Passwords Do Not Match',
-      'passNotMatchSub': 'Please ensure both password fields are identical.',
+      'passNotMatchSub':
+      'Please ensure both password fields are identical.',
+
       'passSuccessTitle': 'Password Reset Successful!',
-      'passSuccessSub': 'Your password has been updated. You can now login using your new credentials.',
+      'passSuccessSub':
+      'Your password has been updated. You can now login using your new credentials.',
+
       'ruleLength': 'At least 8 characters long',
       'ruleNumber': 'Contains at least 1 number (0-9)',
-      'ruleSpecial': 'Contains at least 1 special character (!@#\$%^&*)',
+      'ruleSpecial':
+      'Contains at least 1 special character (!@#\$%^&*)',
+
+      'lockoutMsg':
+      'Too many failed attempts. Try again in 2 minutes.',
+
+      'errorAuth':
+      'Invalid email or password. Please check and try again.',
+
+      'connErr':
+      'Unable to connect. Please check your internet.',
+
       'btnUnderstand': 'I Understand',
       'btnTryAgain': 'Try Again',
       'btnOk': 'OK',
-      'useEmailOption': 'Via Email Address',
-      'usePhoneOption': 'Via Mobile Number',
+
+      'resendOtp': 'Resend OTP Code',
+      'resendIn': 'Resend available in',
+      'otpSent': 'OTP code sent successfully!',
+      'passwordUpdated': 'Your password has been updated successfully.',
     },
+
     'Tagalog': {
       'subtitle': 'Sistema para sa Modernong Magsasaka',
-      'email': 'Email o Mobile Number',
+      'email': 'Email Address',
       'password': 'Password',
       'forgotPwd': 'Nakalimutan ang Password?',
       'btnLogin': 'Mag-login',
       'noAccount': 'Bago ka ba sa Arroz? ',
       'joinHere': 'Gumawa ng Account',
-      'valEmail': 'Ilagay ang iyong tamang email address',
+
+      'valEmail': 'Ilagay ang iyong email address',
       'valPassword': 'Kailangan ang password',
+
       'forgotTitle': 'I-reset ang Password',
-      'forgotSub': 'Pumili ng paraan kung paano mo gustong hanapin at i-reset ang iyong password:',
-      'forgotSearch': 'HANAPIN ANG ACCOUNT',
-      'lockoutMsg': 'Masyadong maraming subok. Maghintay muna ng 2 minuto.',
-      'errorAuth': 'Maling email o password. Pakisuri at subukan ulit.',
-      'connErr': 'Hindi makakonekta sa internet sa kasalukuyan.',
-      'searchHintEmail': 'Ilagay ang nakarehistrong Email Address',
-      'searchHintPhone': 'Ilagay ang nakarehistrong Mobile Number (hal. 09123456789)',
+      'forgotSub':
+      'Ilagay ang iyong registered email address para makatanggap ng OTP verification code.',
+      'forgotSearch': 'IPADALA ANG OTP',
+
+      'searchHintEmail': 'Ilagay ang registered Email Address',
+
+      'emptySearchWarn':
+      'Mangyaring maglagay ng registered email address.',
+
       'accNotFoundTitle': 'Walang Nahanap na Account',
-      'accNotFoundSub': 'Walang nakatagong Arroz account na nakarehistro sa impormasyong ito.',
-      'emptySearchWarn': 'Mangyaring maglagay ng email address o numero ng cellphone.',
-      'chooseMethod': 'Paano mo gustong matanggap ang iyong OTP verification code?',
-      'sendEmailLink': 'Ipadala ang OTP sa Email',
-      'sendSmsOtp': 'Ipadala ang OTP sa SMS',
-      'continueBtn': 'IPADALA ANG OTP',
+      'accNotFoundSub':
+      'Walang Arroz account na nakarehistro gamit ang email address na ito.',
+
+      'chooseOtpTitle': 'Email Verification',
       'enterOtpTitle': 'Ilagay ang 6-Digit OTP',
       'enterOtpSub': 'Ilagay ang code na ipinadala sa ',
+
       'verifyOtpBtn': 'I-VERIFY ANG OTP',
+
       'invalidOtpTitle': 'Maling OTP Code',
-      'invalidOtpSub': 'Ang OTP code na inilagay mo ay mali o expired na. Pakisuri at subukang muli.',
+      'invalidOtpSub':
+      'Ang OTP code na inilagay mo ay mali o expired na. Pakisuri at subukang muli.',
+
       'newPassTitle': 'Gumawa ng Bagong Password',
-      'newPassSub': 'Maglagay ng matatag na bagong password para sa iyong account.',
+      'newPassSub':
+      'Maglagay ng matatag na bagong password para sa iyong account.',
+
       'newPassHint': 'Bagong Password',
       'confirmPassHint': 'Kumpirmahin ang Password',
+
       'savePassBtn': 'I-UPDATE ANG PASSWORD',
+
       'passNotMatchTitle': 'Hindi Magkatugma ang Password',
-      'passNotMatchSub': 'Siguraduhing pareho ang inilagay na password sa dalawang field.',
+      'passNotMatchSub':
+      'Siguraduhing pareho ang inilagay na password sa dalawang field.',
+
       'passSuccessTitle': 'Tagumpay ang Pag-reset!',
-      'passSuccessSub': 'Na-update na ang iyong password. Maaari ka nang mag-login gamit ang bagong password.',
+      'passSuccessSub':
+      'Na-update na ang iyong password. Maaari ka nang mag-login gamit ang bagong password.',
+
       'ruleLength': 'Hindi bababa sa 8 characters',
       'ruleNumber': 'Mayroong kahit 1 numero (0-9)',
-      'ruleSpecial': 'Mayroong kahit 1 special character (!@#\$%^&*)',
+      'ruleSpecial':
+      'Mayroong kahit 1 special character (!@#\$%^&*)',
+
+      'lockoutMsg':
+      'Masyadong maraming subok. Maghintay muna ng 2 minuto.',
+
+      'errorAuth':
+      'Maling email o password. Pakisuri at subukan ulit.',
+
+      'connErr':
+      'Hindi makakonekta sa internet sa kasalukuyan.',
+
       'btnUnderstand': 'Naintindihan Ko',
       'btnTryAgain': 'Subukang Muli',
       'btnOk': 'Sige',
-      'useEmailOption': 'Gamit ang Email Address',
-      'usePhoneOption': 'Gamit ang Mobile Number',
-    }
+
+      'resendOtp': 'Ipadala Muli ang OTP',
+      'resendIn': 'Maaaring mag-resend sa',
+      'otpSent': 'Matagumpay na naipadala ang OTP!',
+      'passwordUpdated':
+      'Matagumpay na na-update ang iyong password.',
+    },
   };
+
+  String _maskEmail(String email) {
+    if (!email.contains('@')) return email;
+
+    final parts = email.split('@');
+    final username = parts[0];
+    final domain = parts[1];
+
+    if (username.length <= 2) {
+      return '${username[0]}***@$domain';
+    }
+
+    return '${username[0]}***${username[username.length - 1]}@$domain';
+  }
 
   void _showCustomWarningDialog({
     required BuildContext context,
@@ -148,167 +223,353 @@ class _LoginUserPageState extends State<LoginUserPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 36),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textMain),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                description,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: ArrozTheme.textMuted, height: 1.4),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 0,
-                  ),
-                  onPressed: onPressed ?? () => Navigator.pop(ctx),
-                  child: Text(
-                    buttonText,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                ),
-              ),
-            ],
+      builder: (ctx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
           ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 36,
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: ArrozTheme.textMain,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  description,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: ArrozTheme.textMuted,
+                    height: 1.4,
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: color,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed:
+                    onPressed ?? () => Navigator.pop(ctx),
+                    child: Text(
+                      buttonText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
   }
 
-  String _normalizePhoneNumber(String raw) {
-    String cleaned = raw.replaceAll(RegExp(r'\D'), '');
-    if (cleaned.startsWith('09')) return '+63${cleaned.substring(1)}';
-    if (cleaned.startsWith('9') && cleaned.length == 10) return '+63$cleaned';
-    if (cleaned.startsWith('639')) return '+$cleaned';
-    return raw;
+  // ============================================================
+  // LOGIN
+  // ============================================================
+
+  Future<void> _handleLogin() async {
+    final localized = _txt[_currentLanguage]!;
+
+    if (_lockoutTime != null) {
+      final difference =
+      DateTime.now().difference(_lockoutTime!);
+
+      if (difference.inMinutes < 2) {
+        _showCustomWarningDialog(
+          context: context,
+          title: 'Account Locked Temporarily',
+          description: localized['lockoutMsg']!,
+          icon: Icons.lock_clock_rounded,
+          color: ArrozTheme.error,
+          buttonText: localized['btnUnderstand']!,
+        );
+        return;
+      } else {
+        _failedAttempts = 0;
+        _lockoutTime = null;
+      }
+    }
+
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final email =
+      _emailController.text.trim().toLowerCase();
+
+      final password =
+      _passwordController.text.trim();
+
+      await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      _failedAttempts = 0;
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const HomeUserPage(),
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      _failedAttempts++;
+
+      debugPrint(
+        'LOGIN ERROR: ${e.code} - ${e.message}',
+      );
+
+      if (_failedAttempts >= 5) {
+        _lockoutTime = DateTime.now();
+
+        _showCustomWarningDialog(
+          context: context,
+          title: 'Account Locked Temporarily',
+          description: localized['lockoutMsg']!,
+          icon: Icons.lock_clock_rounded,
+          color: ArrozTheme.error,
+          buttonText: localized['btnUnderstand']!,
+        );
+      } else {
+        String message = localized['errorAuth']!;
+
+        if (e.code == 'user-not-found') {
+          message = _currentLanguage == 'Tagalog'
+              ? 'Walang account na gumagamit ng email na ito.'
+              : 'No account found with this email address.';
+        }
+
+        if (e.code == 'wrong-password' ||
+            e.code == 'invalid-credential') {
+          message = localized['errorAuth']!;
+        }
+
+        _showCustomWarningDialog(
+          context: context,
+          title: _currentLanguage == 'Tagalog'
+              ? 'Maling Credentials'
+              : 'Invalid Credentials',
+          description: message,
+          icon: Icons.no_accounts_rounded,
+          color: ArrozTheme.error,
+          buttonText: localized['btnTryAgain']!,
+        );
+      }
+    } catch (e) {
+      debugPrint('LOGIN GENERAL ERROR: $e');
+
+      _showSnackBar(
+        localized['connErr']!,
+        ArrozTheme.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
-  String _maskEmail(String email) {
-    if (!email.contains('@')) return email;
-    final parts = email.split('@');
-    final name = parts[0];
-    if (name.length <= 2) return "${name[0]}***@${parts[1]}";
-    return "${name[0]}***${name[name.length - 1]}@${parts[1]}";
-  }
-
-  String _maskPhone(String phone) {
-    if (phone.length < 7) return phone;
-    return "${phone.substring(0, 4)}****${phone.substring(phone.length - 3)}";
-  }
+  // ============================================================
+  // FORGOT PASSWORD
+  // EMAIL OTP ONLY
+  // ============================================================
 
   void _openForgotPasswordSheet() {
-    final searchController = TextEditingController();
+    final localized = _txt[_currentLanguage]!;
+
+    final emailController = TextEditingController();
     final otpController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
 
     int currentStep = 1;
+
     bool isProcessing = false;
+
     bool obscureNew = true;
     bool obscureConfirm = true;
 
-    // Timer States
-    Timer? resendTimer;
-    int timerSeconds = 60;
-    bool canResend = false;
-
-    // Real-time password validations
     bool hasMin8 = false;
     bool hasDigit = false;
     bool hasSpecial = false;
 
-    Map<String, dynamic>? foundUserData;
-    String selectedMethod = 'email'; // 'email' o 'sms'
-    String targetAddress = '';
+    Timer? resendTimer;
 
-    final localized = _txt[_currentLanguage]!;
+    int timerSeconds = 60;
+    bool canResend = false;
+
+    Map<String, dynamic>? foundUserData;
+
+    String targetEmail = '';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-
             void startResendTimer() {
               resendTimer?.cancel();
+
               setSheetState(() {
                 timerSeconds = 60;
                 canResend = false;
               });
 
-              resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-                if (timerSeconds > 0) {
-                  setSheetState(() {
-                    timerSeconds--;
-                  });
-                } else {
-                  setSheetState(() {
-                    canResend = true;
-                  });
-                  timer.cancel();
-                }
-              });
+              resendTimer = Timer.periodic(
+                const Duration(seconds: 1),
+                    (timer) {
+                  if (timerSeconds > 0) {
+                    setSheetState(() {
+                      timerSeconds--;
+                    });
+                  } else {
+                    setSheetState(() {
+                      canResend = true;
+                    });
+
+                    timer.cancel();
+                  }
+                },
+              );
             }
 
-            Future<void> resendOtpCode() async {
-              setSheetState(() => isProcessing = true);
+            Future<void> resendOtp() async {
+              if (targetEmail.isEmpty ||
+                  foundUserData == null) {
+                return;
+              }
+
+              setSheetState(() {
+                isProcessing = true;
+              });
+
               try {
-                if (selectedMethod == 'email') {
-                  await AuthService.instance.generateAndSaveEmailOTP(
-                    email: targetAddress,
-                    name: foundUserData!['name'] ?? 'User',
-                    reason: "Password Reset",
+                await AuthService.instance
+                    .generateAndSaveEmailOTP(
+                  email: targetEmail,
+                  name:
+                  foundUserData!['name'] ??
+                      'User',
+                  reason: 'Password Reset',
+                );
+
+                if (context.mounted) {
+                  _showSnackBar(
+                    localized['otpSent']!,
+                    Colors.green.shade700,
                   );
-                } else {
-                  await AuthService.instance.sendPhoneOTPWithTextBee(phoneNumber: targetAddress);
                 }
-                _showSnackBar(_currentLanguage == 'Tagalog' ? "Naipadala nang muli ang OTP code!" : "OTP code resent successfully!", Colors.green.shade700);
+
                 startResendTimer();
               } catch (e) {
-                _showSnackBar(localized['connErr']!, ArrozTheme.error);
+                debugPrint(
+                  'RESEND OTP ERROR: $e',
+                );
+
+                if (context.mounted) {
+                  _showSnackBar(
+                    e.toString().replaceFirst(
+                      'Exception: ',
+                      '',
+                    ),
+                    ArrozTheme.error,
+                  );
+                }
               } finally {
-                setSheetState(() => isProcessing = false);
+                setSheetState(() {
+                  isProcessing = false;
+                });
               }
             }
 
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom:
+                MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: const BoxDecoration(
                   color: ArrozTheme.cardBg,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
                 ),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
                     children: [
                       Center(
                         child: Container(
@@ -316,357 +577,568 @@ class _LoginUserPageState extends State<LoginUserPage> {
                           height: 4,
                           decoration: BoxDecoration(
                             color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius:
+                            BorderRadius.circular(10),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
 
-                      // STEP 1: MAMILI MUNA KUNG EMAIL O MOBILE NUMBER
+                      const SizedBox(height: 18),
+
+                      // =================================================
+                      // STEP 1 - EMAIL
+                      // =================================================
+
                       if (currentStep == 1) ...[
-                        Text(localized['forgotTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
-                        const SizedBox(height: 6),
-                        Text(localized['forgotSub']!, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
-                        const SizedBox(height: 20),
-
-                        // Selection Switcher (Email vs Mobile)
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: ArrozTheme.bg,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.grey.shade200),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setSheetState(() {
-                                      selectedMethod = 'email';
-                                      searchController.clear();
-                                    });
-                                  },
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: selectedMethod == 'email' ? ArrozTheme.primary : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.email_outlined, size: 18, color: selectedMethod == 'email' ? Colors.white : ArrozTheme.textMuted),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          localized['useEmailOption']!,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: selectedMethod == 'email' ? Colors.white : ArrozTheme.textMuted,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setSheetState(() {
-                                      selectedMethod = 'sms';
-                                      searchController.clear();
-                                    });
-                                  },
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: selectedMethod == 'sms' ? ArrozTheme.primary : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.phone_android_outlined, size: 18, color: selectedMethod == 'sms' ? Colors.white : ArrozTheme.textMuted),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          localized['usePhoneOption']!,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: selectedMethod == 'sms' ? Colors.white : ArrozTheme.textMuted,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                        Text(
+                          localized['forgotTitle']!,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: ArrozTheme.textMain,
                           ),
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 6),
+
+                        Text(
+                          localized['forgotSub']!,
+                          style: const TextStyle(
+                            color: ArrozTheme.textMuted,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
 
                         TextField(
-                          controller: searchController,
-                          keyboardType: selectedMethod == 'email' ? TextInputType.emailAddress : TextInputType.phone,
+                          controller: emailController,
+                          keyboardType:
+                          TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            hintText: selectedMethod == 'email' ? localized['searchHintEmail'] : localized['searchHintPhone'],
-                            hintStyle: const TextStyle(fontSize: 13, color: ArrozTheme.textMuted),
-                            prefixIcon: Icon(selectedMethod == 'email' ? Icons.email_outlined : Icons.phone_android_outlined, color: ArrozTheme.primary),
+                            hintText:
+                            localized['searchHintEmail']!,
+                            prefixIcon: const Icon(
+                              Icons.email_outlined,
+                              color: ArrozTheme.primary,
+                            ),
                             filled: true,
                             fillColor: ArrozTheme.bg,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
+
                         const SizedBox(height: 20),
+
                         SizedBox(
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                            onPressed: isProcessing ? null : () async {
-                              final query = searchController.text.trim();
+                            style:
+                            ElevatedButton.styleFrom(
+                              backgroundColor:
+                              ArrozTheme.primary,
+                              shape:
+                              RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                            ),
+                            onPressed: isProcessing
+                                ? null
+                                : () async {
+                              final email =
+                              emailController
+                                  .text
+                                  .trim()
+                                  .toLowerCase();
 
-                              if (query.isEmpty) {
+                              if (email.isEmpty) {
                                 _showCustomWarningDialog(
                                   context: context,
-                                  title: _currentLanguage == 'Tagalog' ? "May Kulang" : "Missing Info",
-                                  description: localized['emptySearchWarn']!,
-                                  icon: Icons.error_outline_rounded,
-                                  color: ArrozTheme.warning,
-                                  buttonText: localized['btnUnderstand']!,
+                                  title:
+                                  _currentLanguage ==
+                                      'Tagalog'
+                                      ? 'May Kulang'
+                                      : 'Missing Information',
+                                  description:
+                                  localized[
+                                  'emptySearchWarn']!,
+                                  icon: Icons
+                                      .error_outline_rounded,
+                                  color:
+                                  ArrozTheme.warning,
+                                  buttonText:
+                                  localized[
+                                  'btnUnderstand']!,
                                 );
                                 return;
                               }
 
-                              setSheetState(() => isProcessing = true);
+                              setSheetState(() {
+                                isProcessing = true;
+                              });
 
                               try {
-                                DocumentSnapshot? userDoc;
+                                final result =
+                                await FirebaseFirestore
+                                    .instance
+                                    .collection(
+                                    'users')
+                                    .where(
+                                  'email',
+                                  isEqualTo:
+                                  email,
+                                )
+                                    .limit(1)
+                                    .get();
 
-                                if (selectedMethod == 'email') {
-                                  final emailQuery = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: query).get();
-                                  if (emailQuery.docs.isNotEmpty) userDoc = emailQuery.docs.first;
-                                } else {
-                                  final normalizedPhone = _normalizePhoneNumber(query);
-                                  final phoneQuery = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: query).get();
-                                  final normPhoneQuery = await FirebaseFirestore.instance.collection('users').where('phone', isEqualTo: normalizedPhone).get();
-
-                                  if (phoneQuery.docs.isNotEmpty) userDoc = phoneQuery.docs.first;
-                                  else if (normPhoneQuery.docs.isNotEmpty) userDoc = normPhoneQuery.docs.first;
-                                }
-
-                                if (userDoc == null || !userDoc.exists) {
+                                if (result.docs
+                                    .isEmpty) {
                                   if (context.mounted) {
                                     _showCustomWarningDialog(
                                       context: context,
-                                      title: localized['accNotFoundTitle']!,
-                                      description: localized['accNotFoundSub']!,
-                                      icon: Icons.person_off_rounded,
-                                      color: ArrozTheme.error,
-                                      buttonText: localized['btnTryAgain']!,
+                                      title: localized[
+                                      'accNotFoundTitle']!,
+                                      description:
+                                      localized[
+                                      'accNotFoundSub']!,
+                                      icon: Icons
+                                          .person_off_rounded,
+                                      color:
+                                      ArrozTheme.error,
+                                      buttonText:
+                                      localized[
+                                      'btnTryAgain']!,
                                     );
                                   }
-                                } else {
-                                  foundUserData = userDoc.data() as Map<String, dynamic>;
 
-                                  if (selectedMethod == 'email') {
-                                    targetAddress = foundUserData!['email'] ?? '';
-                                    await AuthService.instance.generateAndSaveEmailOTP(
-                                      email: targetAddress,
-                                      name: foundUserData!['name'] ?? 'User',
-                                      reason: "Password Reset",
-                                    );
-                                  } else {
-                                    targetAddress = _normalizePhoneNumber(foundUserData!['phone'] ?? '');
-                                    await AuthService.instance.sendPhoneOTPWithTextBee(phoneNumber: targetAddress);
-                                  }
+                                  return;
+                                }
 
+                                foundUserData =
+                                    result.docs.first
+                                        .data();
+
+                                targetEmail =
+                                    foundUserData![
+                                    'email'] ??
+                                        email;
+
+                                await AuthService
+                                    .instance
+                                    .generateAndSaveEmailOTP(
+                                  email: targetEmail,
+                                  name: foundUserData![
+                                  'name'] ??
+                                      'User',
+                                  reason:
+                                  'Password Reset',
+                                );
+
+                                if (context.mounted) {
                                   setSheetState(() {
-                                    currentStep = 3; // Diretso agad sa OTP Verification
+                                    currentStep = 2;
                                   });
+
                                   startResendTimer();
                                 }
                               } catch (e) {
-                                if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
+                                debugPrint(
+                                    'FORGOT PASSWORD ERROR: $e');
+
+                                if (context.mounted) {
+                                  _showSnackBar(
+                                    e.toString()
+                                        .replaceFirst(
+                                      'Exception: ',
+                                      '',
+                                    ),
+                                    ArrozTheme.error,
+                                  );
+                                }
                               } finally {
-                                setSheetState(() => isProcessing = false);
+                                if (context.mounted) {
+                                  setSheetState(() {
+                                    isProcessing =
+                                    false;
+                                  });
+                                }
                               }
                             },
                             child: isProcessing
-                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : Text(localized['forgotSearch']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child:
+                              CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                                : Text(
+                              localized[
+                              'forgotSearch']!,
+                              style:
+                              const TextStyle(
+                                color: Colors.white,
+                                fontWeight:
+                                FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
                           ),
                         ),
                       ]
 
-                      // STEP 3: VERIFY OTP CODE (WITH TIMER & RESEND CODE)
-                      else if (currentStep == 3) ...[
-                        Text(localized['enterOtpTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
+                      // =================================================
+                      // STEP 2 - VERIFY EMAIL OTP
+                      // =================================================
+
+                      else if (currentStep == 2) ...[
+                        Text(
+                          localized['enterOtpTitle']!,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: ArrozTheme.textMain,
+                          ),
+                        ),
+
                         const SizedBox(height: 6),
-                        Text("${localized['enterOtpSub']!}${selectedMethod == 'email' ? _maskEmail(targetAddress) : _maskPhone(targetAddress)}", style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
+
+                        Text(
+                          '${localized['enterOtpSub']!}${_maskEmail(targetEmail)}',
+                          style: const TextStyle(
+                            color: ArrozTheme.textMuted,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+
                         const SizedBox(height: 20),
+
                         TextField(
                           controller: otpController,
-                          keyboardType: TextInputType.number,
+                          keyboardType:
+                          TextInputType.number,
                           maxLength: 6,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 22, letterSpacing: 8, fontWeight: FontWeight.bold, color: ArrozTheme.primary),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            letterSpacing: 8,
+                            fontWeight: FontWeight.bold,
+                            color: ArrozTheme.primary,
+                          ),
                           decoration: InputDecoration(
-                            counterText: "",
-                            filled: true, fillColor: ArrozTheme.bg,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            counterText: '',
+                            filled: true,
+                            fillColor: ArrozTheme.bg,
+                            contentPadding:
+                            const EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 16),
 
-                        // COUNTDOWN TIMER & RESEND CODE SECTION
+                        const SizedBox(height: 12),
+
                         Center(
-                          child: Column(
-                            children: [
-                              if (!canResend)
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.timer_outlined, size: 16, color: ArrozTheme.textMuted),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      _currentLanguage == 'Tagalog'
-                                          ? "Maaaring mag-resend sa ${timerSeconds}s"
-                                          : "Resend available in ${timerSeconds}s",
-                                      style: const TextStyle(fontSize: 13, color: ArrozTheme.textMuted, fontWeight: FontWeight.w500),
-                                    ),
-                                  ],
-                                )
-                              else
-                                TextButton(
-                                  onPressed: isProcessing ? null : resendOtpCode,
-                                  child: Text(
-                                    _currentLanguage == 'Tagalog'
-                                        ? "Ipadala Muli ang Code (Resend OTP)"
-                                        : "Resend OTP Code",
-                                    style: const TextStyle(
-                                      color: ArrozTheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      decoration: TextDecoration.underline,
-                                    ),
-                                  ),
-                                ),
-                            ],
+                          child: canResend
+                              ? TextButton(
+                            onPressed: isProcessing
+                                ? null
+                                : resendOtp,
+                            child: Text(
+                              localized['resendOtp']!,
+                              style:
+                              const TextStyle(
+                                color:
+                                ArrozTheme.primary,
+                                fontWeight:
+                                FontWeight.bold,
+                              ),
+                            ),
+                          )
+                              : Text(
+                            '${localized['resendIn']} ${timerSeconds}s',
+                            style:
+                            const TextStyle(
+                              color:
+                              ArrozTheme.textMuted,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
+
                         SizedBox(
-                          width: double.infinity, height: 50,
+                          width: double.infinity,
+                          height: 50,
                           child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                            onPressed: isProcessing ? null : () async {
-                              final typedOtp = otpController.text.trim();
-                              if (typedOtp.length < 6) return;
+                            style:
+                            ElevatedButton.styleFrom(
+                              backgroundColor:
+                              ArrozTheme.primary,
+                              shape:
+                              RoundedRectangleBorder(
+                                borderRadius:
+                                BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                            ),
+                            onPressed: isProcessing
+                                ? null
+                                : () async {
+                              final otp =
+                              otpController.text
+                                  .trim();
 
-                              setSheetState(() => isProcessing = true);
+                              if (otp.length != 6) {
+                                return;
+                              }
+
+                              setSheetState(() {
+                                isProcessing = true;
+                              });
+
                               try {
-                                bool isValid = false;
-                                if (selectedMethod == 'email') {
-                                  isValid = await AuthService.instance.verifyEmailOTP(email: targetAddress, typedOtp: typedOtp);
-                                } else {
-                                  isValid = await AuthService.instance.verifyPhoneOTP(phoneNumber: targetAddress, typedOtp: typedOtp);
-                                }
+                                final isValid =
+                                await AuthService
+                                    .instance
+                                    .verifyEmailOTP(
+                                  email: targetEmail,
+                                  typedOtp: otp,
+                                );
 
-                                if (isValid) {
-                                  resendTimer?.cancel();
-                                  setSheetState(() => currentStep = 4);
-                                } else {
+                                if (!isValid) {
                                   if (context.mounted) {
                                     _showCustomWarningDialog(
                                       context: context,
-                                      title: localized['invalidOtpTitle']!,
-                                      description: localized['invalidOtpSub']!,
-                                      icon: Icons.shield_outlined,
-                                      color: ArrozTheme.error,
-                                      buttonText: localized['btnTryAgain']!,
+                                      title: localized[
+                                      'invalidOtpTitle']!,
+                                      description:
+                                      localized[
+                                      'invalidOtpSub']!,
+                                      icon: Icons
+                                          .shield_outlined,
+                                      color:
+                                      ArrozTheme.error,
+                                      buttonText:
+                                      localized[
+                                      'btnTryAgain']!,
                                     );
                                   }
+
+                                  return;
+                                }
+
+                                resendTimer?.cancel();
+
+                                if (context.mounted) {
+                                  setSheetState(() {
+                                    currentStep = 3;
+                                  });
                                 }
                               } catch (e) {
-                                if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
+                                debugPrint(
+                                    'VERIFY OTP ERROR: $e');
+
+                                if (context.mounted) {
+                                  _showSnackBar(
+                                    localized['connErr']!,
+                                    ArrozTheme.error,
+                                  );
+                                }
                               } finally {
-                                setSheetState(() => isProcessing = false);
+                                if (context.mounted) {
+                                  setSheetState(() {
+                                    isProcessing =
+                                    false;
+                                  });
+                                }
                               }
                             },
                             child: isProcessing
-                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : Text(localized['verifyOtpBtn']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child:
+                              CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                                : Text(
+                              localized[
+                              'verifyOtpBtn']!,
+                              style:
+                              const TextStyle(
+                                color: Colors.white,
+                                fontWeight:
+                                FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
                       ]
 
-                      // STEP 4: SET NEW PASSWORD
-                      else if (currentStep == 4) ...[
-                          Text(localized['newPassTitle']!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.textMain)),
+                      // =================================================
+                      // STEP 3 - NEW PASSWORD
+                      // =================================================
+
+                      else if (currentStep == 3) ...[
+                          Text(
+                            localized['newPassTitle']!,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: ArrozTheme.textMain,
+                            ),
+                          ),
+
                           const SizedBox(height: 6),
-                          Text(localized['newPassSub']!, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13, height: 1.4)),
+
+                          Text(
+                            localized['newPassSub']!,
+                            style: const TextStyle(
+                              color: ArrozTheme.textMuted,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+
                           const SizedBox(height: 20),
 
                           TextField(
-                            controller: newPasswordController,
+                            controller:
+                            newPasswordController,
                             obscureText: obscureNew,
-                            onChanged: (val) {
+                            onChanged: (value) {
                               setSheetState(() {
-                                hasMin8 = val.length >= 8;
-                                hasDigit = val.contains(RegExp(r'\d'));
-                                hasSpecial = val.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>\-_=+]'));
+                                hasMin8 =
+                                    value.length >= 8;
+                                hasDigit =
+                                    RegExp(r'\d')
+                                        .hasMatch(value);
+                                hasSpecial = RegExp(
+                                  r'[!@#$%^&*(),.?":{}|<>\-_=+]',
+                                ).hasMatch(value);
                               });
                             },
                             decoration: InputDecoration(
-                              labelText: localized['newPassHint'],
-                              prefixIcon: const Icon(Icons.lock_outline_rounded, color: ArrozTheme.primary),
-                              suffixIcon: IconButton(
-                                icon: Icon(obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted),
-                                onPressed: () => setSheetState(() => obscureNew = !obscureNew),
+                              labelText:
+                              localized['newPassHint'],
+                              prefixIcon:
+                              const Icon(
+                                Icons.lock_outline_rounded,
+                                color: ArrozTheme.primary,
                               ),
-                              filled: true, fillColor: ArrozTheme.bg,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                              suffixIcon:
+                              IconButton(
+                                icon: Icon(
+                                  obscureNew
+                                      ? Icons
+                                      .visibility_outlined
+                                      : Icons
+                                      .visibility_off_outlined,
+                                ),
+                                onPressed: () {
+                                  setSheetState(() {
+                                    obscureNew =
+                                    !obscureNew;
+                                  });
+                                },
+                              ),
+                              filled: true,
+                              fillColor: ArrozTheme.bg,
+                              border: OutlineInputBorder(
+                                borderRadius:
+                                BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
                             ),
                           ),
+
                           const SizedBox(height: 12),
 
                           TextField(
-                            controller: confirmPasswordController,
+                            controller:
+                            confirmPasswordController,
                             obscureText: obscureConfirm,
                             decoration: InputDecoration(
-                              labelText: localized['confirmPassHint'],
-                              prefixIcon: const Icon(Icons.lock_reset_rounded, color: ArrozTheme.primary),
-                              suffixIcon: IconButton(
-                                icon: Icon(obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted),
-                                onPressed: () => setSheetState(() => obscureConfirm = !obscureConfirm),
+                              labelText:
+                              localized[
+                              'confirmPassHint'],
+                              prefixIcon:
+                              const Icon(
+                                Icons.lock_reset_rounded,
+                                color: ArrozTheme.primary,
                               ),
-                              filled: true, fillColor: ArrozTheme.bg,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                              suffixIcon:
+                              IconButton(
+                                icon: Icon(
+                                  obscureConfirm
+                                      ? Icons
+                                      .visibility_outlined
+                                      : Icons
+                                      .visibility_off_outlined,
+                                ),
+                                onPressed: () {
+                                  setSheetState(() {
+                                    obscureConfirm =
+                                    !obscureConfirm;
+                                  });
+                                },
+                              ),
+                              filled: true,
+                              fillColor: ArrozTheme.bg,
+                              border: OutlineInputBorder(
+                                borderRadius:
+                                BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
                             ),
                           ),
+
                           const SizedBox(height: 16),
 
                           Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: ArrozTheme.bg, borderRadius: BorderRadius.circular(14)),
+                            padding:
+                            const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: ArrozTheme.bg,
+                              borderRadius:
+                              BorderRadius.circular(14),
+                            ),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildRuleItem(localized['ruleLength']!, hasMin8),
+                                _buildRuleItem(
+                                  localized['ruleLength']!,
+                                  hasMin8,
+                                ),
                                 const SizedBox(height: 6),
-                                _buildRuleItem(localized['ruleNumber']!, hasDigit),
+                                _buildRuleItem(
+                                  localized['ruleNumber']!,
+                                  hasDigit,
+                                ),
                                 const SizedBox(height: 6),
-                                _buildRuleItem(localized['ruleSpecial']!, hasSpecial),
+                                _buildRuleItem(
+                                  localized['ruleSpecial']!,
+                                  hasSpecial,
+                                ),
                               ],
                             ),
                           ),
@@ -674,67 +1146,155 @@ class _LoginUserPageState extends State<LoginUserPage> {
                           const SizedBox(height: 20),
 
                           SizedBox(
-                            width: double.infinity, height: 50,
+                            width: double.infinity,
+                            height: 50,
                             child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                              onPressed: isProcessing ? null : () async {
-                                final pass = newPasswordController.text.trim();
-                                final confirmPass = confirmPasswordController.text.trim();
+                              style:
+                              ElevatedButton.styleFrom(
+                                backgroundColor:
+                                ArrozTheme.primary,
+                                shape:
+                                RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(16),
+                                ),
+                                elevation: 0,
+                              ),
+                              onPressed: isProcessing
+                                  ? null
+                                  : () async {
+                                final password =
+                                    newPasswordController
+                                        .text;
 
-                                if (pass != confirmPass) {
+                                final confirm =
+                                    confirmPasswordController
+                                        .text;
+
+                                if (password !=
+                                    confirm) {
                                   _showCustomWarningDialog(
                                     context: context,
-                                    title: localized['passNotMatchTitle']!,
-                                    description: localized['passNotMatchSub']!,
-                                    icon: Icons.password_rounded,
-                                    color: ArrozTheme.warning,
-                                    buttonText: localized['btnUnderstand']!,
+                                    title: localized[
+                                    'passNotMatchTitle']!,
+                                    description:
+                                    localized[
+                                    'passNotMatchSub']!,
+                                    icon: Icons
+                                        .password_rounded,
+                                    color:
+                                    ArrozTheme.warning,
+                                    buttonText:
+                                    localized[
+                                    'btnUnderstand']!,
                                   );
                                   return;
                                 }
 
-                                if (!hasMin8 || !hasDigit || !hasSpecial) {
+                                if (!hasMin8 ||
+                                    !hasDigit ||
+                                    !hasSpecial) {
                                   _showCustomWarningDialog(
                                     context: context,
-                                    title: _currentLanguage == 'Tagalog' ? "Babalala sa Password Rules" : "Password Rules Warning",
-                                    description: _currentLanguage == 'Tagalog'
-                                        ? "Mangyaring sundin ang lahat ng patakaran sa password bago magpatuloy."
-                                        : "Please make sure your password satisfies all requirements.",
-                                    icon: Icons.security_rounded,
-                                    color: ArrozTheme.warning,
-                                    buttonText: localized['btnUnderstand']!,
+                                    title: _currentLanguage ==
+                                        'Tagalog'
+                                        ? 'Hindi Valid ang Password'
+                                        : 'Invalid Password',
+                                    description:
+                                    _currentLanguage ==
+                                        'Tagalog'
+                                        ? 'Mangyaring sundin ang lahat ng password requirements.'
+                                        : 'Please satisfy all password requirements.',
+                                    icon: Icons
+                                        .security_rounded,
+                                    color:
+                                    ArrozTheme.warning,
+                                    buttonText:
+                                    localized[
+                                    'btnUnderstand']!,
                                   );
                                   return;
                                 }
 
-                                setSheetState(() => isProcessing = true);
+                                setSheetState(() {
+                                  isProcessing = true;
+                                });
+
                                 try {
-                                  final uid = foundUserData!['uid'];
-                                  await FirebaseFirestore.instance.collection('users').doc(uid).update({
-                                    'passwordUpdated': FieldValue.serverTimestamp(),
-                                  });
+                                  await AuthService
+                                      .instance
+                                      .resetPasswordAfterEmailOTP(
+                                    email: targetEmail,
+                                    newPassword:
+                                    password,
+                                  );
+
+                                  resendTimer?.cancel();
+
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+
+                                  Navigator.pop(context);
+
+                                  _showCustomWarningDialog(
+                                    context: context,
+                                    title: localized[
+                                    'passSuccessTitle']!,
+                                    description:
+                                    localized[
+                                    'passSuccessSub']!,
+                                    icon: Icons
+                                        .check_circle_rounded,
+                                    color: Colors
+                                        .green.shade700,
+                                    buttonText:
+                                    localized[
+                                    'btnOk']!,
+                                  );
+                                } catch (e) {
+                                  debugPrint(
+                                      'RESET PASSWORD ERROR: $e');
 
                                   if (context.mounted) {
-                                    Navigator.pop(context);
-
-                                    _showCustomWarningDialog(
-                                      context: context,
-                                      title: localized['passSuccessTitle']!,
-                                      description: localized['passSuccessSub']!,
-                                      icon: Icons.check_circle_rounded,
-                                      color: Colors.green.shade700,
-                                      buttonText: localized['btnOk']!,
+                                    _showSnackBar(
+                                      e.toString()
+                                          .replaceFirst(
+                                        'Exception: ',
+                                        '',
+                                      ),
+                                      ArrozTheme.error,
                                     );
                                   }
-                                } catch (e) {
-                                  if (context.mounted) _showSnackBar(localized['connErr']!, ArrozTheme.error);
                                 } finally {
-                                  setSheetState(() => isProcessing = false);
+                                  if (context.mounted) {
+                                    setSheetState(() {
+                                      isProcessing =
+                                      false;
+                                    });
+                                  }
                                 }
                               },
                               child: isProcessing
-                                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                  : Text(localized['savePassBtn']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                                  : Text(
+                                localized[
+                                'savePassBtn']!,
+                                style:
+                                const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight:
+                                  FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -748,16 +1308,28 @@ class _LoginUserPageState extends State<LoginUserPage> {
       },
     ).then((_) {
       resendTimer?.cancel();
+
+      emailController.dispose();
+      otpController.dispose();
+      newPasswordController.dispose();
+      confirmPasswordController.dispose();
     });
   }
 
-  Widget _buildRuleItem(String text, bool isMet) {
+  Widget _buildRuleItem(
+      String text,
+      bool isMet,
+      ) {
     return Row(
       children: [
         Icon(
-          isMet ? Icons.check_circle_rounded : Icons.cancel_rounded,
+          isMet
+              ? Icons.check_circle_rounded
+              : Icons.cancel_rounded,
           size: 18,
-          color: isMet ? Colors.green.shade700 : Colors.grey.shade400,
+          color: isMet
+              ? Colors.green.shade700
+              : Colors.grey.shade400,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -765,88 +1337,15 @@ class _LoginUserPageState extends State<LoginUserPage> {
             text,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: isMet ? FontWeight.bold : FontWeight.normal,
-              color: isMet ? ArrozTheme.textMain : ArrozTheme.textMuted,
+              fontWeight:
+              isMet ? FontWeight.bold : FontWeight.normal,
+              color: isMet
+                  ? ArrozTheme.textMain
+                  : ArrozTheme.textMuted,
             ),
           ),
         ),
       ],
-    );
-  }
-
-  Future<void> _handleLogin() async {
-    final localized = _txt[_currentLanguage]!;
-
-    if (_lockoutTime != null && DateTime.now().difference(_lockoutTime!).inMinutes < 2) {
-      _showCustomWarningDialog(
-        context: context,
-        title: "Account Locked Temporarily",
-        description: localized['lockoutMsg']!,
-        icon: Icons.lock_clock_rounded,
-        color: ArrozTheme.error,
-        buttonText: localized['btnUnderstand']!,
-      );
-      return;
-    }
-
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    try {
-      String username = _emailController.text.trim();
-
-      if (username.contains("@")) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: username,
-          password: _passwordController.text.trim(),
-        );
-      } else {
-        await AuthService.instance.loginWithPhone(
-          phoneNumber: username,
-          password: _passwordController.text.trim(),
-        );
-      }
-
-      _failedAttempts = 0;
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeUserPage()));
-    } on FirebaseAuthException catch (_) {
-      _failedAttempts++;
-      if (_failedAttempts >= 5) {
-        _lockoutTime = DateTime.now();
-        _showCustomWarningDialog(
-          context: context,
-          title: "Account Locked Temporarily",
-          description: localized['lockoutMsg']!,
-          icon: Icons.lock_clock_rounded,
-          color: ArrozTheme.error,
-          buttonText: localized['btnUnderstand']!,
-        );
-      } else {
-        _showCustomWarningDialog(
-          context: context,
-          title: "Maling Credentials",
-          description: localized['errorAuth']!,
-          icon: Icons.no_accounts_rounded,
-          color: ArrozTheme.error,
-          buttonText: localized['btnTryAgain']!,
-        );
-      }
-    } catch (e) {
-      _showSnackBar(localized['connErr']!, ArrozTheme.error);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _showSnackBar(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500)),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
     );
   }
 
@@ -866,34 +1365,72 @@ class _LoginUserPageState extends State<LoginUserPage> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 16,
+            ),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints:
+              const BoxConstraints(maxWidth: 420),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment:
+                  CrossAxisAlignment.stretch,
                   children: [
                     Align(
                       alignment: Alignment.topRight,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: ArrozTheme.cardBg,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.grey.shade200),
+                          borderRadius:
+                          BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.grey.shade200,
+                          ),
                         ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
+                        child:
+                        DropdownButtonHideUnderline(
+                          child:
+                          DropdownButton<String>(
                             value: _currentLanguage,
-                            style: const TextStyle(color: ArrozTheme.textMain, fontWeight: FontWeight.w600, fontSize: 13),
-                            onChanged: (v) => setState(() => _currentLanguage = v!),
-                            items: ['Tagalog', 'English'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                            style: const TextStyle(
+                              color:
+                              ArrozTheme.textMain,
+                              fontWeight:
+                              FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                            onChanged: (value) {
+                              if (value == null) return;
+
+                              setState(() {
+                                _currentLanguage =
+                                    value;
+                              });
+                            },
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Tagalog',
+                                child:
+                                Text('Tagalog'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'English',
+                                child:
+                                Text('English'),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
 
                     Center(
@@ -901,101 +1438,282 @@ class _LoginUserPageState extends State<LoginUserPage> {
                         width: 72,
                         height: 72,
                         decoration: BoxDecoration(
-                          color: ArrozTheme.primary,
-                          borderRadius: BorderRadius.circular(22),
+                          color:
+                          ArrozTheme.primary,
+                          borderRadius:
+                          BorderRadius.circular(22),
                           boxShadow: [
-                            BoxShadow(color: ArrozTheme.primary.withOpacity(0.2), blurRadius: 16, offset: const Offset(0, 6)),
+                            BoxShadow(
+                              color: ArrozTheme
+                                  .primary
+                                  .withOpacity(0.2),
+                              blurRadius: 16,
+                              offset:
+                              const Offset(0, 6),
+                            ),
                           ],
                         ),
-                        child: const Icon(Icons.eco_rounded, size: 38, color: ArrozTheme.accent),
+                        child: const Icon(
+                          Icons.eco_rounded,
+                          size: 38,
+                          color:
+                          ArrozTheme.accent,
+                        ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
 
-                    const Text("ARROZ", textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: ArrozTheme.primary, letterSpacing: 2)),
-                    Text(localized['subtitle']!, textAlign: TextAlign.center, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13)),
+                    const Text(
+                      'ARROZ',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight:
+                        FontWeight.w900,
+                        color:
+                        ArrozTheme.primary,
+                        letterSpacing: 2,
+                      ),
+                    ),
+
+                    Text(
+                      localized['subtitle']!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color:
+                        ArrozTheme.textMuted,
+                        fontSize: 13,
+                      ),
+                    ),
+
                     const SizedBox(height: 32),
 
                     Container(
-                      padding: const EdgeInsets.all(24),
+                      padding:
+                      const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: ArrozTheme.cardBg,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.grey.shade200),
+                        color:
+                        ArrozTheme.cardBg,
+                        borderRadius:
+                        BorderRadius.circular(24),
+                        border: Border.all(
+                          color:
+                          Colors.grey.shade200,
+                        ),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 12, offset: const Offset(0, 4)),
+                          BoxShadow(
+                            color: Colors.black
+                                .withOpacity(0.02),
+                            blurRadius: 12,
+                            offset:
+                            const Offset(0, 4),
+                          ),
                         ],
                       ),
                       child: Column(
                         children: [
                           TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.text,
-                            style: const TextStyle(color: ArrozTheme.textMain, fontWeight: FontWeight.w500),
-                            decoration: _inputDecoration(localized['email']!, Icons.mail_outline_rounded),
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) {
-                                return localized['valEmail'];
+                            controller:
+                            _emailController,
+                            keyboardType:
+                            TextInputType
+                                .emailAddress,
+                            style: const TextStyle(
+                              color:
+                              ArrozTheme.textMain,
+                              fontWeight:
+                              FontWeight.w500,
+                            ),
+                            decoration:
+                            _inputDecoration(
+                              localized['email']!,
+                              Icons
+                                  .mail_outline_rounded,
+                            ),
+                            validator: (value) {
+                              if (value == null ||
+                                  value
+                                      .trim()
+                                      .isEmpty) {
+                                return localized[
+                                'valEmail'];
                               }
+
                               return null;
                             },
                           ),
+
                           const SizedBox(height: 16),
+
                           TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            style: const TextStyle(color: ArrozTheme.textMain, fontWeight: FontWeight.w500),
-                            decoration: _inputDecoration(localized['password']!, Icons.lock_outline_rounded).copyWith(
-                              suffixIcon: IconButton(
-                                icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: ArrozTheme.textMuted, size: 20),
-                                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            controller:
+                            _passwordController,
+                            obscureText:
+                            _obscurePassword,
+                            style: const TextStyle(
+                              color:
+                              ArrozTheme.textMain,
+                              fontWeight:
+                              FontWeight.w500,
+                            ),
+                            decoration:
+                            _inputDecoration(
+                              localized[
+                              'password']!,
+                              Icons
+                                  .lock_outline_rounded,
+                            ).copyWith(
+                              suffixIcon:
+                              IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons
+                                      .visibility_outlined
+                                      : Icons
+                                      .visibility_off_outlined,
+                                  color:
+                                  ArrozTheme.textMuted,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword =
+                                    !_obscurePassword;
+                                  });
+                                },
                               ),
                             ),
-                            validator: (v) => (v == null || v.isEmpty) ? localized['valPassword'] : null,
+                            validator: (value) {
+                              if (value == null ||
+                                  value.isEmpty) {
+                                return localized[
+                                'valPassword'];
+                              }
+
+                              return null;
+                            },
                           ),
+
                           Align(
-                            alignment: Alignment.centerRight,
+                            alignment:
+                            Alignment.centerRight,
                             child: TextButton(
-                              onPressed: _openForgotPasswordSheet,
-                              child: Text(localized['forgotPwd']!, style: const TextStyle(color: ArrozTheme.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+                              onPressed:
+                              _openForgotPasswordSheet,
+                              child: Text(
+                                localized[
+                                'forgotPwd']!,
+                                style:
+                                const TextStyle(
+                                  color:
+                                  ArrozTheme
+                                      .primary,
+                                  fontSize: 12,
+                                  fontWeight:
+                                  FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
+
                           const SizedBox(height: 12),
 
                           SizedBox(
-                            width: double.infinity,
+                            width:
+                            double.infinity,
                             height: 52,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: ArrozTheme.primary,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            child:
+                            ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : _handleLogin,
+                              style:
+                              ElevatedButton
+                                  .styleFrom(
+                                backgroundColor:
+                                ArrozTheme
+                                    .primary,
+                                shape:
+                                RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                    16,
+                                  ),
+                                ),
                                 elevation: 0,
                               ),
                               child: _isLoading
-                                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                  : Text(localized['btnLogin']!, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                                  ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                CircularProgressIndicator(
+                                  color:
+                                  Colors
+                                      .white,
+                                  strokeWidth:
+                                  2,
+                                ),
+                              )
+                                  : Text(
+                                localized[
+                                'btnLogin']!,
+                                style:
+                                const TextStyle(
+                                  color: Colors
+                                      .white,
+                                  fontSize: 15,
+                                  fontWeight:
+                                  FontWeight
+                                      .bold,
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
+
                     const SizedBox(height: 24),
 
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment:
+                      MainAxisAlignment.center,
                       children: [
-                        Text(localized['noAccount']!, style: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13)),
+                        Text(
+                          localized['noAccount']!,
+                          style:
+                          const TextStyle(
+                            color:
+                            ArrozTheme.textMuted,
+                            fontSize: 13,
+                          ),
+                        ),
                         GestureDetector(
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => RegisterUserPage(initialLanguage: _currentLanguage),
+                                builder: (_) =>
+                                    RegisterUserPage(
+                                      initialLanguage:
+                                      _currentLanguage,
+                                    ),
                               ),
                             );
                           },
-                          child: Text(localized['joinHere']!, style: const TextStyle(color: ArrozTheme.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                          child: Text(
+                            localized['joinHere']!,
+                            style:
+                            const TextStyle(
+                              color:
+                              ArrozTheme.primary,
+                              fontWeight:
+                              FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -1009,16 +1727,41 @@ class _LoginUserPageState extends State<LoginUserPage> {
     );
   }
 
-  InputDecoration _inputDecoration(String label, IconData icon) {
+  InputDecoration _inputDecoration(
+      String label,
+      IconData icon,
+      ) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: ArrozTheme.textMuted, fontSize: 13),
-      prefixIcon: Icon(icon, color: ArrozTheme.primary, size: 20),
+      labelStyle: const TextStyle(
+        color: ArrozTheme.textMuted,
+        fontSize: 13,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: ArrozTheme.primary,
+        size: 20,
+      ),
       filled: true,
       fillColor: ArrozTheme.bg,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: ArrozTheme.primary, width: 1.5)),
+      contentPadding:
+      const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius:
+        BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius:
+        BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: ArrozTheme.primary,
+          width: 1.5,
+        ),
+      ),
     );
   }
 }

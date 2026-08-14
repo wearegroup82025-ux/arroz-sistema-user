@@ -4,7 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-
+import 'package:provider/provider.dart';
+import '../../providers/language_provider.dart';
 import '../../services/auth/auth.service.dart';
 import 'address_picker.dart';
 
@@ -181,29 +182,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               final String newLName = lNameController.text.trim();
                               final String full = "$newFName ${newMI.isNotEmpty ? '$newMI. ' : ''}$newLName".trim();
 
-                              final authPhone = _currentUser!.phoneNumber;
-
-                              final Map<String, dynamic> updateData = {
-                                'uid': _currentUser!.uid,
+                              await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({
                                 'firstName': newFName,
                                 'middleInitial': newMI,
                                 'lastName': newLName,
                                 'name': full,
-                                'updatedAt': FieldValue.serverTimestamp(),
-                              };
-
-
-                              if (authPhone != null && authPhone.isNotEmpty) {
-                                updateData['phone'] = authPhone;
-                              }
-
-                              await FirebaseFirestore.instance
-                                  .collection("users")
-                                  .doc(_currentUser!.uid)
-                                  .set(
-                                updateData,
-                                SetOptions(merge: true),
-                              );
+                              });
 
                               await _currentUser!.updateDisplayName(full);
 
@@ -324,20 +308,9 @@ class _ProfilePageState extends State<ProfilePage> {
                             try {
                               final String newPhone = phoneController.text.trim();
 
-                              final Map<String, dynamic> updateData = {
-                                'uid': _currentUser!.uid,
+                              await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({
                                 'phone': newPhone,
-                                'updatedAt': FieldValue.serverTimestamp(),
-                              };
-
-
-                              await FirebaseFirestore.instance
-                                  .collection("users")
-                                  .doc(_currentUser!.uid)
-                                  .set(
-                                updateData,
-                                SetOptions(merge: true),
-                              );
+                              });
 
                               if (!context.mounted) return;
                               Navigator.pop(context);
@@ -358,228 +331,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ],
                   )
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // ============================================================================
-// 3. DIALOG PARA SA EMAIL
-// ============================================================================
-
-  void _showEditEmailDialog(String currentEmail) {
-    final emailController = TextEditingController(
-      text: currentEmail == 'Walang Email' ? '' : currentEmail,
-    );
-
-    final formKey = GlobalKey<FormState>();
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Dialog(
-            backgroundColor: ArrozTheme.cardWhite,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 450),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: ArrozTheme.mintAccent,
-                        radius: 18,
-                        child: Icon(
-                          Icons.email_outlined,
-                          color: ArrozTheme.emerald,
-                          size: 20,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        "I-edit ang Email",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: ArrozTheme.textDark,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  const Text(
-                    "Ilagay ang email address na gusto mong gamitin sa iyong account.",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: ArrozTheme.textSub,
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  Form(
-                    key: formKey,
-                    child: TextFormField(
-                      controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        labelText: "Email Address",
-                        hintText: "example@gmail.com",
-                        prefixIcon: const Icon(
-                          Icons.email_outlined,
-                          color: ArrozTheme.emerald,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: ArrozTheme.emerald,
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-
-                        if (email.isEmpty) {
-                          return "Kailangan ang Email Address";
-                        }
-
-                        final emailRegex = RegExp(
-                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                        );
-
-                        if (!emailRegex.hasMatch(email)) {
-                          return "Ilagay ang tamang email address";
-                        }
-
-                        return null;
-                      },
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: isSaving
-                            ? null
-                            : () => Navigator.pop(dialogContext),
-                        child: const Text(
-                          "Kanselahin",
-                          style: TextStyle(
-                            color: ArrozTheme.textSub,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: ArrozTheme.emerald,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                        ),
-                        onPressed: isSaving
-                            ? null
-                            : () async {
-                          if (!formKey.currentState!.validate()) {
-                            return;
-                          }
-
-                          setDialogState(() {
-                            isSaving = true;
-                          });
-
-                          try {
-                            final String newEmail =
-                            emailController.text.trim().toLowerCase();
-
-                            await FirebaseFirestore.instance
-                                .collection("users")
-                                .doc(_currentUser!.uid)
-                                .set(
-                              {
-                                'uid': _currentUser!.uid,
-                                'email': newEmail,
-                                'updatedAt':
-                                FieldValue.serverTimestamp(),
-                              },
-                              SetOptions(merge: true),
-                            );
-
-                            if (!dialogContext.mounted) return;
-
-                            Navigator.pop(dialogContext);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Matagumpay na na-update ang email!",
-                                ),
-                                backgroundColor: ArrozTheme.emerald,
-                              ),
-                            );
-                          } catch (e) {
-                            setDialogState(() {
-                              isSaving = false;
-                            });
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  "Pumalya sa pag-save: $e",
-                                ),
-                                backgroundColor:
-                                ArrozTheme.dangerRed,
-                              ),
-                            );
-                          }
-                        },
-                        child: isSaving
-                            ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                            : const Text(
-                          "I-save",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -616,7 +367,7 @@ class _ProfilePageState extends State<ProfilePage> {
           final String middleInitial = userData['middleInitial'] ?? '';
           final String lastName = userData['lastName'] ?? '';
 
-          String formattedFullName = "$firstName ${middleInitial.isNotEmpty ? '$middleInitial. ' : ''}$lastName".trim();
+          String formattedFullName = "$firstName ${middleInitial.isNotEmpty ? '$middleInitial ' : ''}$lastName".trim();
           bool isNameMissing = false;
 
           if (formattedFullName.isEmpty) {
@@ -636,37 +387,8 @@ class _ProfilePageState extends State<ProfilePage> {
             });
           }
 
-          // ============================================================
-// ACCOUNT CONTACT INFORMATION
-// ============================================================
-
-          final String authEmail = (_currentUser!.email ?? '').trim();
-          final String authPhone = (_currentUser!.phoneNumber ?? '').trim();
-
-          final String firestoreEmail =
-          (userData['email']?.toString() ?? '').trim();
-
-          final String firestorePhone =
-          (userData['phone']?.toString() ?? '').trim();
-
-// Email:
-// Gamitin ang Firestore email kung mayroon.
-// Kung wala, saka lang gamitin ang Firebase Auth email.
-// Kung wala talaga, "Walang Email".
-          final String userEmail = firestoreEmail.isNotEmpty
-              ? firestoreEmail
-              : authEmail.isNotEmpty
-              ? authEmail
-              : 'Walang Email';
-
-// Phone:
-// Gamitin ang Firestore phone kung mayroon.
-// Kung wala, gamitin ang Firebase Auth phone number.
-          final String userPhone = firestorePhone.isNotEmpty
-              ? firestorePhone
-              : authPhone.isNotEmpty
-              ? authPhone
-              : 'Walang Phone Number';
+          final String userEmail = userData['email'] ?? _currentUser!.email ?? 'Walang Email';
+          final String userPhone = userData['phone'] ?? 'Walang Phone Number';
           final String? photoUrl = userData['photoUrl'] ?? _currentUser!.photoURL;
 
           return LayoutBuilder(
@@ -880,20 +602,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                                 email: userEmail,
                                                 phone: userPhone,
                                                 isNameMissing: isNameMissing,
-
-                                                onEditNameTap: () => _showEditNameDialog(
-                                                  firstName,
-                                                  middleInitial,
-                                                  lastName,
-                                                ),
-
-                                                onEditEmailTap: () => _showEditEmailDialog(
-                                                  userEmail,
-                                                ),
-
-                                                onEditPhoneTap: () => _showEditPhoneDialog(
-                                                  userPhone,
-                                                ),
+                                                onEditNameTap: () => _showEditNameDialog(firstName, middleInitial, lastName),
+                                                onEditPhoneTap: () => _showEditPhoneDialog(userPhone),
                                               ),
                                             ),
                                           );
@@ -904,8 +614,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                       width: itemWidth,
                                       child: _buildMenuTile(
                                         icon: Icons.shield_outlined,
-                                        title: "Security & Addresses",
-                                        subtitle: "Password reset via OTP at shipping addresses",
+                                        title: "Addresses",
+                                        subtitle: "Manage your delivery and shipping addresses",
                                         onTap: () {
                                           Navigator.push(
                                             context,
@@ -998,77 +708,43 @@ class _ProfilePageState extends State<ProfilePage> {
     required VoidCallback onTap,
     bool isWarning = false,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
+    return Container(
+      decoration: BoxDecoration(
+        color: isWarning ? ArrozTheme.warningBg : ArrozTheme.cardWhite,
         borderRadius: BorderRadius.circular(14),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isWarning
-                ? ArrozTheme.warningBg
-                : ArrozTheme.cardWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isWarning
-                  ? ArrozTheme.warningOrange.withOpacity(0.4)
-                  : ArrozTheme.dividerColor,
-              width: 0.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        border: Border.all(
+          color: isWarning ? ArrozTheme.warningOrange.withOpacity(0.4) : ArrozTheme.dividerColor,
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 6,
-            ),
-            leading: Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: isWarning
-                    ? ArrozTheme.warningBg
-                    : ArrozTheme.mintAccent,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: isWarning
-                    ? ArrozTheme.warningOrange
-                    : ArrozTheme.emerald,
-                size: 22,
-              ),
-            ),
-            title: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: ArrozTheme.textDark,
-              ),
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                subtitle,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: ArrozTheme.textSub,
-                ),
-              ),
-            ),
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-              color: ArrozTheme.textSub,
-              size: 20,
-            ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isWarning ? ArrozTheme.warningOrange.withOpacity(0.15) : ArrozTheme.mintAccent,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: isWarning ? ArrozTheme.warningOrange : ArrozTheme.emerald, size: 22),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: ArrozTheme.textDark)),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isWarning ? FontWeight.bold : FontWeight.normal,
+            color: isWarning ? ArrozTheme.warningOrange : ArrozTheme.textSub,
           ),
         ),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 22, color: ArrozTheme.textSub),
+        onTap: onTap,
       ),
     );
   }
@@ -1190,9 +866,7 @@ class PersonalDetailsPage extends StatelessWidget {
   final String email;
   final String phone;
   final bool isNameMissing;
-
   final VoidCallback onEditNameTap;
-  final VoidCallback onEditEmailTap;
   final VoidCallback onEditPhoneTap;
 
   const PersonalDetailsPage({
@@ -1202,7 +876,6 @@ class PersonalDetailsPage extends StatelessWidget {
     required this.phone,
     this.isNameMissing = false,
     required this.onEditNameTap,
-    required this.onEditEmailTap,
     required this.onEditPhoneTap,
   });
 
@@ -1264,39 +937,9 @@ class PersonalDetailsPage extends StatelessWidget {
                     ),
                     const Divider(height: 1, color: ArrozTheme.dividerColor),
                     ListTile(
-                      leading: const Icon(
-                        Icons.email_outlined,
-                        color: ArrozTheme.emerald,
-                      ),
-                      title: const Text(
-                        "Email Address",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: ArrozTheme.textSub,
-                        ),
-                      ),
-                      subtitle: Text(
-                        email,
-                        style: TextStyle(
-                          fontWeight: email == 'Walang Email'
-                              ? FontWeight.normal
-                              : FontWeight.w600,
-                          fontSize: 14,
-                          color: email == 'Walang Email'
-                              ? ArrozTheme.textSub
-                              : ArrozTheme.textDark,
-                        ),
-                      ),
-                      trailing: TextButton(
-                        onPressed: onEditEmailTap,
-                        child: Text(
-                          email == 'Walang Email' ? "I-set" : "I-edit",
-                          style: const TextStyle(
-                            color: ArrozTheme.emerald,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                      leading: const Icon(Icons.email_outlined, color: ArrozTheme.emerald),
+                      title: const Text("Email Address", style: TextStyle(fontSize: 13, color: ArrozTheme.textSub)),
+                      subtitle: Text(email, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: ArrozTheme.textDark)),
                     ),
                     const Divider(height: 1, color: ArrozTheme.dividerColor),
                     ListTile(
@@ -1698,132 +1341,232 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
 // 📱 OTHER DEDICATED FULL-SCREEN PAGES (FULL WIDTH)
 // ============================================================================
 
+// ============================================================================
+// 📱 SECURITY & ADDRESS PAGE
+// 🔒 Password change temporarily removed
+// 📍 Delivery Address Manager only
+// ============================================================================
+
 class SecurityAndAddressPage extends StatelessWidget {
   final String email;
   final String fullName;
 
-  const SecurityAndAddressPage({super.key, required this.email, required this.fullName});
+  const SecurityAndAddressPage({
+    super.key,
+    required this.email,
+    required this.fullName,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ArrozTheme.bgGrey,
+
       appBar: AppBar(
-        title: const Text("Security & Address", style: TextStyle(color: ArrozTheme.textDark, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        iconTheme: const IconThemeData(color: ArrozTheme.textDark),
-        centerTitle: true,
-      ),
-      body: SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: ArrozTheme.dividerColor),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.lock_outline_rounded, color: ArrozTheme.emerald),
-                  title: const Text("Palitan ang Password", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: const Text("Magpapadala ng OTP code sa iyong email", style: TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
-                  trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: ArrozTheme.textSub),
-                  onTap: () => _startOTPReset(context),
-                ),
-                const Divider(height: 1, color: ArrozTheme.dividerColor),
-                ListTile(
-                  leading: const Icon(Icons.location_on_outlined, color: ArrozTheme.emerald),
-                  title: const Text("Delivery Address Manager", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: const Text("Pumili o magdagdag ng lokasyon", style: TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
-                  trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: ArrozTheme.textSub),
-                  onTap: () {
-                    GlobalAddressSelectionService.showAddressPicker(
-                      context: context,
-                      onAddressSelected: (addr) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Napiling address: ${addr['barangay']}"), backgroundColor: ArrozTheme.emerald),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
+        title: const Text(
+          "Security & Address",
+          style: TextStyle(
+            color: ArrozTheme.textDark,
+            fontWeight: FontWeight.bold,
           ),
         ),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        iconTheme: const IconThemeData(
+          color: ArrozTheme.textDark,
+        ),
+        centerTitle: true,
       ),
-    );
-  }
 
-  void _startOTPReset(BuildContext context) async {
-    showDialog(context: context, builder: (context) => const Center(child: CircularProgressIndicator(color: ArrozTheme.emerald)));
-    await AuthService.instance.generateAndSaveEmailOTP(email: email, name: fullName, reason: "Password Reset");
-    if (!context.mounted) return;
-    Navigator.pop(context);
-
-    final otpController = TextEditingController();
-    final passController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: ArrozTheme.cardWhite,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 450),
-          padding: const EdgeInsets.all(20),
+      body: SizedBox(
+        width: double.infinity,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Verify OTP Code", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: otpController,
-                decoration: InputDecoration(
-                  labelText: "6-Digit OTP",
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+
+              // ==============================================================
+              // SECTION TITLE
+              // ==============================================================
+
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 10),
+                child: Text(
+                  "Security & Addresses",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: ArrozTheme.textSub,
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: "Bagong Password",
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+
+              // ==============================================================
+              // MAIN CARD
+              // ==============================================================
+
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: ArrozTheme.dividerColor,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+
+                    // ========================================================
+                    // DELIVERY ADDRESS
+                    // ========================================================
+
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+
+                      leading: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: const BoxDecoration(
+                          color: ArrozTheme.mintAccent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.location_on_outlined,
+                          color: ArrozTheme.emerald,
+                          size: 22,
+                        ),
+                      ),
+
+                      title: const Text(
+                        "Delivery Address Manager",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: ArrozTheme.textDark,
+                        ),
+                      ),
+
+                      subtitle: const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          "Pumili, magdagdag, o mag-manage ng iyong delivery address.",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: ArrozTheme.textSub,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+
+                      trailing: const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 22,
+                        color: ArrozTheme.textSub,
+                      ),
+
+                      onTap: () {
+                        GlobalAddressSelectionService.showAddressPicker(
+                          context: context,
+
+                          onAddressSelected: (addr) {
+                            if (!context.mounted) return;
+
+                            final String barangay =
+                            (addr['barangay'] ?? '').toString();
+
+                            final String municipality =
+                            (addr['municipality'] ?? '').toString();
+
+                            String selectedAddress = barangay;
+
+                            if (municipality.isNotEmpty) {
+                              selectedAddress =
+                              "$barangay, $municipality";
+                            }
+
+                            if (selectedAddress.trim().isEmpty) {
+                              selectedAddress = "Delivery address";
+                            }
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "Napiling address: $selectedAddress",
+                                ),
+                                backgroundColor: ArrozTheme.emerald,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
+
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Cancel", style: TextStyle(color: ArrozTheme.textSub)),
+
+              // ==============================================================
+              // INFORMATION CARD
+              // ==============================================================
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: ArrozTheme.mintAccent,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: ArrozTheme.emerald.withOpacity(0.15),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: ArrozTheme.emerald, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                    onPressed: () async {
-                      bool valid = await AuthService.instance.verifyEmailOTP(email: email, typedOtp: otpController.text.trim());
-                      if (valid) {
-                        await FirebaseAuth.instance.currentUser!.updatePassword(passController.text.trim());
-                        if (!context.mounted) return;
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Napaltan na ang password!"), backgroundColor: ArrozTheme.emerald));
-                      }
-                    },
-                    child: const Text("Verify & Save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              )
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: ArrozTheme.emerald,
+                      size: 22,
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            "Tungkol sa Delivery Address",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: ArrozTheme.emerald,
+                            ),
+                          ),
+
+                          SizedBox(height: 5),
+
+                          Text(
+                            "Siguraduhing tama at updated ang iyong delivery address para maiwasan ang delay o maling delivery ng iyong order.",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: ArrozTheme.textSub,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1832,59 +1575,256 @@ class SecurityAndAddressPage extends StatelessWidget {
   }
 }
 
-class PreferencesPage extends StatefulWidget {
+
+class PreferencesPage extends StatelessWidget {
   const PreferencesPage({super.key});
 
-  @override
-  State<PreferencesPage> createState() => _PreferencesPageState();
-}
+  void _showLanguageDialog(BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(
+      context,
+      listen: false,
+    );
 
-class _PreferencesPageState extends State<PreferencesPage> {
-  bool notif = true;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ArrozTheme.bgGrey,
-      appBar: AppBar(
-        title: const Text("Preferences", style: TextStyle(color: ArrozTheme.textDark, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        iconTheme: const IconThemeData(color: ArrozTheme.textDark),
-        centerTitle: true,
-      ),
-      body: SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: ArrozTheme.cardWhite,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: ArrozTheme.dividerColor),
-            ),
+            constraints: const BoxConstraints(maxWidth: 400),
+            padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SwitchListTile(
-                  activeColor: ArrozTheme.emerald,
-                  title: const Text("Push Notifications", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: const Text("Makatanggap ng update tungkol sa order status", style: TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
-                  value: notif,
-                  onChanged: (v) => setState(() => notif = v),
+                const Text(
+                  "Pumili ng Wika / Select Language",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: ArrozTheme.textDark,
+                  ),
                 ),
-                const Divider(height: 1, color: ArrozTheme.dividerColor),
-                const ListTile(
-                  leading: Icon(Icons.language_rounded, color: ArrozTheme.emerald),
-                  title: Text("Language / Wika", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text("Tagalog / English", style: TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
+
+                const SizedBox(height: 16),
+
+                // =========================================================
+                // 🇬🇧 ENGLISH
+                // =========================================================
+                RadioListTile<AppLanguage>(
+                  activeColor: ArrozTheme.emerald,
+                  title: const Text(
+                    "English",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: ArrozTheme.textDark,
+                    ),
+                  ),
+                  value: AppLanguage.english,
+                  groupValue: languageProvider.language,
+                  onChanged: (value) {
+                    if (value == null) return;
+
+                    languageProvider.setLanguage(value);
+
+                    Navigator.pop(dialogContext);
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          "Language changed to English",
+                        ),
+                        backgroundColor: ArrozTheme.emerald,
+                      ),
+                    );
+                  },
+                ),
+
+                // =========================================================
+                // 🇵🇭 TAGALOG
+                // =========================================================
+                RadioListTile<AppLanguage>(
+                  activeColor: ArrozTheme.emerald,
+                  title: const Text(
+                    "Tagalog",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: ArrozTheme.textDark,
+                    ),
+                  ),
+                  value: AppLanguage.tagalog,
+                  groupValue: languageProvider.language,
+                  onChanged: (value) {
+                    if (value == null) return;
+
+                    languageProvider.setLanguage(value);
+
+                    Navigator.pop(dialogContext);
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          "Na-set ang wika sa Tagalog",
+                        ),
+                        backgroundColor: ArrozTheme.emerald,
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: Text(
+                      languageProvider.isEnglish
+                          ? "Cancel"
+                          : "Kanselahin",
+                      style: const TextStyle(
+                        color: ArrozTheme.textSub,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        final bool isEnglish = languageProvider.isEnglish;
+
+        return Scaffold(
+          backgroundColor: ArrozTheme.bgGrey,
+
+          appBar: AppBar(
+            title: Text(
+              isEnglish ? "Preferences" : "Preferences",
+              style: const TextStyle(
+                color: ArrozTheme.textDark,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            backgroundColor: Colors.white,
+            elevation: 0.5,
+            iconTheme: const IconThemeData(
+              color: ArrozTheme.textDark,
+            ),
+            centerTitle: true,
+          ),
+
+          body: SizedBox(
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: ArrozTheme.dividerColor,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+
+                    // =====================================================
+                    // 🔔 PUSH NOTIFICATIONS
+                    // =====================================================
+                    SwitchListTile(
+                      activeColor: ArrozTheme.emerald,
+
+                      title: Text(
+                        isEnglish
+                            ? "Push Notifications"
+                            : "Push Notifications",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+
+                      subtitle: Text(
+                        isEnglish
+                            ? "Receive updates about your order status"
+                            : "Makatanggap ng update tungkol sa order status",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: ArrozTheme.textSub,
+                        ),
+                      ),
+
+                      value: true,
+
+                      onChanged: (value) {
+                        // Notification setting can be connected
+                        // to Firestore later.
+                      },
+                    ),
+
+                    const Divider(
+                      height: 1,
+                      color: ArrozTheme.dividerColor,
+                    ),
+
+                    // =====================================================
+                    // 🌐 LANGUAGE
+                    // =====================================================
+                    ListTile(
+                      leading: const Icon(
+                        Icons.language_rounded,
+                        color: ArrozTheme.emerald,
+                      ),
+
+                      title: Text(
+                        isEnglish
+                            ? "Language"
+                            : "Wika",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+
+                      subtitle: Text(
+                        languageProvider.languageName,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: ArrozTheme.textSub,
+                        ),
+                      ),
+
+                      trailing: const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: ArrozTheme.textSub,
+                      ),
+
+                      onTap: () {
+                        _showLanguageDialog(context);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
