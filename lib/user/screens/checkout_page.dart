@@ -9,6 +9,7 @@ import 'payment_webview.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'orders_page.dart';
+import 'package:arroz_app/services/notification/notification_service.dart';
 
 class CheckoutPage extends StatefulWidget {
   final Map<String, dynamic>? initialAddress;
@@ -39,7 +40,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   Future<void> _loadDefaultAddress() async {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) return;
 
     final snapshot = await FirebaseFirestore.instance
@@ -57,7 +57,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  // 🟢 BAGONG FUNCTION: Bumabawas ng stock sa Inventory/Products collection sa Firestore
   Future<void> _deductProductStock() async {
     final batch = FirebaseFirestore.instance.batch();
 
@@ -67,8 +66,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (productId != null && productId.toString().isNotEmpty) {
         final productRef = FirebaseFirestore.instance.collection('products').doc(productId);
-
-        // Ibabawas ang eksaktong bilang ng inorder sa stock ng produkto
         batch.update(productRef, {
           'stock': FieldValue.increment(-quantityOrdered)
         });
@@ -78,15 +75,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
     await batch.commit();
   }
 
-  // --- ONLINE PAYMENT METHOD (PAYMONGO CHECKOUT PROCESS) ---
   Future<void> _processOnlinePayment(
-      DocumentReference orderRef,
-      String methodKey,
-      String customerName,
-      String customerEmail,
-      String customerPhone,
-      ) async {
-
+    DocumentReference orderRef,
+    String methodKey,
+    String customerName,
+    String customerEmail,
+    String customerPhone,
+  ) async {
     final primaryColor = Theme.of(context).primaryColor;
     final errorColor = Theme.of(context).colorScheme.error;
 
@@ -96,13 +91,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
       builder: (_) => Center(
         child: Card(
           margin: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: primaryColor),
-              const SizedBox(height: 15),
-              const Text("Preparing secure payment gateway...", style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: primaryColor),
+                const SizedBox(height: 15),
+                const Text("Preparing secure payment gateway...", style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
           ),
         ),
       ),
@@ -110,17 +108,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     try {
       final response = await http.post(
-        Uri.parse(
-          "https://arroz-backend.onrender.com/api/create-payment",
-        ),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        Uri.parse("https://arroz-backend.onrender.com/api/create-payment"),
+        headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "orderId": orderRef.id,
           "amount": widget.totalAmount,
           "paymentMethod": methodKey,
-
           "customerName": customerName,
           "customerEmail": customerEmail,
           "customerPhone": customerPhone,
@@ -137,16 +130,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
         if (kIsWeb) {
           final uri = Uri.parse(checkoutUrl);
-
           if (await canLaunchUrl(uri)) {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.externalApplication,
-            );
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
           } else {
             throw Exception("Unable to open PayMongo Checkout.");
           }
-
           return;
         }
 
@@ -161,7 +149,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
 
         if (mounted && result == "SUCCESS") {
-          // 🟢 IDAGDAG: Bawasan ang stock kapag matagumpay ang online payment
           await _deductProductStock();
           await _removePurchasedItemsFromCart();
 
@@ -173,11 +160,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
           );
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
-              builder: (_) => const HomeUserPage(
-                initialIndex: 3,
-              ),
+              builder: (_) => const HomeUserPage(initialIndex: 3),
             ),
-                (route) => false,
+            (route) => false,
           );
         } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -212,10 +197,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     for (final item in widget.orderItems) {
       if (item['cartDocId'] != null) {
-        final docRef = FirebaseFirestore.instance
-            .collection('cart')
-            .doc(item['cartDocId']);
-
+        final docRef = FirebaseFirestore.instance.collection('cart').doc(item['cartDocId']);
         batch.delete(docRef);
       }
     }
@@ -223,7 +205,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     await batch.commit();
   }
 
-  // --- MAIN ORDER CREATION LOGIC ---
   void _placeOrder() async {
     final errorColor = Theme.of(context).colorScheme.error;
     final primaryColor = Theme.of(context).primaryColor;
@@ -239,14 +220,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
       final bool isOnlinePayment = paymentMethod == "GCash / E-Wallet";
-
       final String contactNum = selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? "N/A";
+      final String customerName = selectedAddress!['fullName'] ?? 'Customer';
 
-      // 1. Create Order Record in Firestore
+      // 1. Create Order Document sa Firestore
       final orderRef = await FirebaseFirestore.instance.collection("orders").add({
-        "userId": user?.uid,
-        "customerName": selectedAddress!['fullName'],
+        "userId": user.uid,
+        "customerName": customerName,
         "emailAddress": selectedAddress!['emailAddress'],
         "phoneNumber": contactNum,
         "deliveryAddress": "${selectedAddress!['streetBuildingHouseNo']}, ${selectedAddress!['barangay']}, ${selectedAddress!['cityMunicipality']}, ${selectedAddress!['province']} (${selectedAddress!['postalCode'] ?? ''})",
@@ -258,27 +241,50 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "createdAt": FieldValue.serverTimestamp(),
       });
 
+      final shortOrderId = orderRef.id.substring(0, 6);
+      final formattedAmount = "₱${widget.totalAmount.toStringAsFixed(2)}";
+
+      // 2. NOTIFICATION PARA SA CUSTOMER (Buyer App)
       await FirebaseFirestore.instance.collection("notifications").add({
-        "title": "New Order",
-        "body": "${selectedAddress!['fullName']} placed a new order.",
+        "userId": user.uid,
+        "recipientType": "customer",
+        "title": "Order Confirmed! (#$shortOrderId)",
+        "body": "Salamat sa pagbili, $customerName! Ang iyong order na $formattedAmount ay nai-place na.",
         "type": "order",
         "orderId": orderRef.id,
         "isRead": false,
         "timestamp": FieldValue.serverTimestamp(),
       });
 
-      // 2. Process based on selected payment method
+      // 3. NOTIFICATION PARA SA ADMIN / SELLER (Admin App)
+      await FirebaseFirestore.instance.collection("notifications").add({
+        "recipientType": "admin",
+        "title": "New Order Alert! (#$shortOrderId)",
+        "body": "New order received from $customerName worth $formattedAmount via $paymentMethod. Please process for fulfillment.",
+        "type": "order",
+        "orderId": orderRef.id,
+        "isRead": false,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
+
+      // 4. System Push Banner
+      await NotificationService.showNotification(
+        title: "New Order Alert! (#$shortOrderId)",
+        body: "New order received from $customerName worth $formattedAmount.",
+        channelId: NotificationService.channelOrders,
+      );
+
+      // 5. Payment Routing
       if (isOnlinePayment) {
         if (mounted) setState(() => isPlacingOrder = false);
         await _processOnlinePayment(
           orderRef,
           "gcash",
-          selectedAddress!['fullName']?.toString() ?? "Customer",
-          selectedAddress!['emailAddress']?.toString() ?? user?.email ?? "",
+          customerName,
+          selectedAddress!['emailAddress']?.toString() ?? user.email ?? "",
           contactNum,
         );
       } else {
-        // 🟢 IDAGDAG: Bawasan ang stock para sa Cash on Delivery (COD) order
         await _deductProductStock();
         await _removePurchasedItemsFromCart();
 
@@ -293,13 +299,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
                   onPressed: () {
-                    Navigator.pop(context); // close dialog
-
+                    Navigator.pop(context);
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: (_) => const OrdersPage(),
-                      ),
-                          (route) => false,
+                      MaterialPageRoute(builder: (_) => const OrdersPage()),
+                      (route) => false,
                     );
                   },
                   child: const Text("OK", style: TextStyle(color: Colors.white)),
@@ -336,7 +339,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. DELIVERY ADDRESS SECTION
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -365,8 +367,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             );
                           },
                           child: Text(
-                              selectedAddress == null ? "+ Select / Add" : "Change",
-                              style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)
+                            selectedAddress == null ? "+ Select / Add" : "Change",
+                            style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
                           ),
                         )
                       ],
@@ -378,8 +380,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       Text("Name: ${selectedAddress!['fullName']}", style: const TextStyle(fontWeight: FontWeight.w600)),
                       Text("Email: ${selectedAddress!['emailAddress'] ?? 'N/A'}"),
                       Text(
-                          "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}",
-                          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)
+                        "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}",
+                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -392,8 +394,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // 2. PAYMENT METHOD SECTION
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -429,8 +429,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // 3. ORDER SUMMARY SECTION
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -466,8 +464,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
           ],
         ),
       ),
-
-      // BOTTOM BAR FOR PLACE ORDER BUTTON
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
@@ -479,9 +475,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
             child: isPlacingOrder
                 ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
-              paymentMethod == "GCash / E-Wallet" ? "PAY VIA GCASH" : "PLACE ORDER NOW",
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+                    paymentMethod == "GCash / E-Wallet" ? "PAY VIA GCASH" : "PLACE ORDER NOW",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
           ),
         ),
       ),
