@@ -35,7 +35,7 @@ class _HomeUserPageState extends State<HomeUserPage> {
     _listenToAccountStatus();
   }
 
-  // 🔥 REAL-TIME LISTENER PARA SA AUTO-LOGOUT
+  // 🔥 UPDATED REAL-TIME LISTENER NA MAY GRACE PERIOD PARA SA BAGONG ACCOUNTS
   void _listenToAccountStatus() {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
@@ -45,12 +45,24 @@ class _HomeUserPageState extends State<HomeUserPage> {
         .doc(currentUser.uid)
         .snapshots()
         .listen((snapshot) async {
-      // 1. Kung nabura ang user document sa Firestore
+      // 1. Kung wala pang nababasang user document sa Firestore
       if (!snapshot.exists) {
-        await _forceLogout(
-          title: 'Account Deleted',
-          message: 'Ang iyong account ay nabura na ng admin.',
-        );
+        // Maghintay ng 2.5 seconds para bigyan ng oras ang registration flow na matapos ang pag-set sa Firestore
+        await Future.delayed(const Duration(milliseconds: 2500));
+
+        // Mag-recheck gamit ang direct get() call
+        final reCheck = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+
+        // Kung talagang wala pa ring document pagkatapos ng delay, saka lamang mag-force logout
+        if (!reCheck.exists) {
+          await _forceLogout(
+            title: 'Account Deleted',
+            message: 'Ang iyong account ay nabura na ng admin.',
+          );
+        }
         return;
       }
 

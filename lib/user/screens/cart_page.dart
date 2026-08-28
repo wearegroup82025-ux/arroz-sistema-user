@@ -26,11 +26,16 @@ class _CartPageState extends State<CartPage> {
       ) {
     List<Map<String, dynamic>> orderItems = selectedDocs.map((doc) {
       final data = doc.data() as Map<String, dynamic>;
+      final String variation = data['variation'] ?? 'Kilo';
+      final String productName = data['name'] ?? 'Item';
+
       return {
         'productId': data['productId'] ?? doc.id,
-        'name': data['name'] ?? 'Item',
-        'price': data['price'] ?? 0,
+        'name': "$productName ($variation)",
+        'price': (data['price'] ?? 0.0).toDouble(),
+        'variation': variation,
         'quantity': data['quantity'] ?? 1,
+        'imageUrl': data['imageUrl'] ?? '',
         'cartDocId': doc.id,
       };
     }).toList();
@@ -44,6 +49,15 @@ class _CartPageState extends State<CartPage> {
         ),
       ),
     );
+  }
+
+  void _updateQuantity(String docId, int currentQty, int change) {
+    int newQty = currentQty + change;
+    if (newQty > 0) {
+      FirebaseFirestore.instance.collection("cart").doc(docId).update({
+        'quantity': newQty,
+      });
+    }
   }
 
   @override
@@ -91,9 +105,12 @@ class _CartPageState extends State<CartPage> {
 
           for (var doc in cartDocs) {
             final data = doc.data() as Map<String, dynamic>;
+            final double price = (data['price'] ?? 0.0).toDouble();
+            final int quantity = data['quantity'] ?? 1;
+
             if (_selectedItemIds.contains(doc.id)) {
               selectedDocs.add(doc);
-              totalAmount += ((data['price'] ?? 0) * (data['quantity'] ?? 1));
+              totalAmount += (price * quantity);
             }
           }
 
@@ -108,8 +125,14 @@ class _CartPageState extends State<CartPage> {
                     final item = doc.data() as Map<String, dynamic>;
                     final bool isChecked = _selectedItemIds.contains(doc.id);
 
+                    final double price = (item['price'] ?? 0.0).toDouble();
+                    final int quantity = item['quantity'] ?? 1;
+                    final String variation = item['variation'] ?? 'Kilo';
+                    final String imageUrl = item['imageUrl'] ?? '';
+
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
@@ -131,32 +154,107 @@ class _CartPageState extends State<CartPage> {
                               });
                             },
                           ),
+                          
+                          // Product Image
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: imageUrl.isNotEmpty
+                                ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover)
+                                : Container(
+                                    width: 50,
+                                    height: 50,
+                                    color: ArrozTheme.bgGrey,
+                                    child: const Icon(Icons.image, size: 24, color: Colors.grey),
+                                  ),
+                          ),
+                          const SizedBox(width: 10),
+
+                          // Product Info & Variation Tag
                           Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item['name'] ?? 'Item',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: ArrozTheme.textDark),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    "₱${item['price']}  ×  ${item['quantity']}",
-                                    style: const TextStyle(color: ArrozTheme.textSub, fontSize: 13),
-                                  ),
-                                ],
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item['name'] ?? 'Item',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: ArrozTheme.textDark),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: ArrozTheme.emerald.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        variation.toUpperCase(),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: ArrozTheme.emerald,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      "₱${price.toStringAsFixed(2)}",
+                                      style: const TextStyle(color: ArrozTheme.textSub, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Quantity Controls
+                                Row(
+                                  children: [
+                                    InkWell(
+                                      onTap: () => _updateQuantity(doc.id, quantity, -1),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Icon(Icons.remove, size: 14, color: ArrozTheme.textDark),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                      child: Text("$quantity", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    ),
+                                    InkWell(
+                                      onTap: () => _updateQuantity(doc.id, quantity, 1),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Icon(Icons.add, size: 14, color: ArrozTheme.textDark),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            "₱${((item['price'] ?? 0) * (item['quantity'] ?? 1)).toStringAsFixed(2)}",
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: ArrozTheme.emerald, fontSize: 14),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: ArrozTheme.dangerRed, size: 20),
-                            onPressed: () => FirebaseFirestore.instance.collection("cart").doc(doc.id).delete(),
+
+                          // Subtotal & Delete
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                "₱${(price * quantity).toStringAsFixed(2)}",
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: ArrozTheme.emerald, fontSize: 14),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: ArrozTheme.dangerRed, size: 18),
+                                onPressed: () => FirebaseFirestore.instance.collection("cart").doc(doc.id).delete(),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -164,6 +262,7 @@ class _CartPageState extends State<CartPage> {
                   },
                 ),
               ),
+
               // Bottom Checkout Panel
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),

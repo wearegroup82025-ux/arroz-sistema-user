@@ -300,8 +300,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
                   onPressed: () {
                     Navigator.pop(context);
+                    // FIXED: Inilipat pabalik sa HomeUserPage na may index 3 (Orders Tab)
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const OrdersPage()),
+                      MaterialPageRoute(
+                        builder: (_) => const HomeUserPage(initialIndex: 3),
+                      ),
                       (route) => false,
                     );
                   },
