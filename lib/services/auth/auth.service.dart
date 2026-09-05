@@ -13,7 +13,7 @@ class AuthService {
   AuthService._privateConstructor();
 
   static final AuthService instance =
-  AuthService._privateConstructor();
+      AuthService._privateConstructor();
 
   final FirebaseAuth _auth =
       FirebaseAuth.instance;
@@ -27,12 +27,10 @@ class AuthService {
   User? get currentUser =>
       _auth.currentUser;
 
-
   // ============================================================
   // TEXTBEE CONFIGURATION
   // ============================================================
 
-  // PALITAN MO LANG ANG 2 VALUES NA ITO
   static const String _textBeeApiKey =
       '3976128d-92db-428f-8e94-8ac21cb5b1b4';
 
@@ -47,36 +45,63 @@ class AuthService {
   // ============================================================
 
   Future<bool> _isEmailDomainValid(
-      String email,
-      ) async {
+    String email,
+  ) async {
     try {
-      final parts =
-      email.split('@');
+      final parts = email.split('@');
 
       if (parts.length != 2) {
         return false;
       }
 
-      final domain =
-      parts[1].trim();
+      final domain = parts[1].trim();
 
-      final result =
-      await InternetAddress.lookup(
+      final result = await InternetAddress.lookup(
         domain,
       );
 
       return result.isNotEmpty &&
-          result[0]
-              .rawAddress
-              .isNotEmpty;
+          result[0].rawAddress.isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
   // ============================================================
-// GENERATE EMAIL OTP
-// ============================================================
+  // FIREBASE PASSWORD RESET LINK (100% LIBRE)
+  // ============================================================
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    final cleanEmail = email.trim().toLowerCase();
+
+    final emailRegex = RegExp(
+      r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,}$',
+    );
+
+    if (!emailRegex.hasMatch(cleanEmail)) {
+      throw Exception('Maling format ng email address.');
+    }
+
+    try {
+      await _auth.sendPasswordResetEmail(email: cleanEmail);
+      debugPrint('SUCCESS: Password reset email sent to $cleanEmail');
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') {
+        throw Exception('Walang account na nakarehistro sa email na ito.');
+      } else if (e.code == 'invalid-email') {
+        throw Exception('Hindi valid ang format ng email.');
+      } else {
+        throw Exception(e.message ?? 'Bigo sa pagpapadala ng password reset email.');
+      }
+    } catch (e) {
+      debugPrint('PASSWORD RESET ERROR: $e');
+      throw Exception('May naganap na error habang nagpapadala ng reset link.');
+    }
+  }
+
+  // ============================================================
+  // GENERATE EMAIL OTP
+  // ============================================================
 
   Future<String> generateAndSaveEmailOTP({
     required String email,
@@ -120,9 +145,9 @@ class AuthService {
         final existingEmailDoc = await _firestore
             .collection('users')
             .where(
-          'email',
-          isEqualTo: cleanEmail,
-        )
+              'email',
+              isEqualTo: cleanEmail,
+            )
             .limit(1)
             .get();
 
@@ -142,8 +167,7 @@ class AuthService {
       }
 
       try {
-        final methods = await _auth
-            .fetchSignInMethodsForEmail(
+        final methods = await _auth.fetchSignInMethodsForEmail(
           cleanEmail,
         );
 
@@ -167,7 +191,7 @@ class AuthService {
 
     final otp = List.generate(
       6,
-          (_) => random.nextInt(10).toString(),
+      (_) => random.nextInt(10).toString(),
     ).join();
 
     debugPrint(
@@ -352,7 +376,7 @@ Arroz Platform Support
 
       throw Exception(
         'Hindi maipadala ang OTP email. '
-            'Pakisuri ang Gmail App Password at SMTP configuration.',
+        'Pakisuri ang Gmail App Password at SMTP configuration.',
       );
     } catch (e) {
       debugPrint(
@@ -400,11 +424,9 @@ Arroz Platform Support
     required String typedOtp,
   }) async {
     try {
-      final cleanEmail =
-      email.trim().toLowerCase();
+      final cleanEmail = email.trim().toLowerCase();
 
-      final doc =
-      await _firestore
+      final doc = await _firestore
           .collection('email_otps')
           .doc(cleanEmail)
           .get();
@@ -413,21 +435,15 @@ Arroz Platform Support
         return false;
       }
 
-      final data =
-      doc.data();
+      final data = doc.data();
 
       if (data == null) {
         return false;
       }
 
-      final savedOtp =
-          data['otp']
-              ?.toString() ??
-              '';
+      final savedOtp = data['otp']?.toString() ?? '';
 
-      final expiresAt =
-      data['expiresAt']
-      as Timestamp?;
+      final expiresAt = data['expiresAt'] as Timestamp?;
 
       if (expiresAt == null) {
         return false;
@@ -437,14 +453,13 @@ Arroz Platform Support
       // EXPIRED
       // --------------------------------------------------------
 
-      if (DateTime.now()
-          .isAfter(
+      if (DateTime.now().isAfter(
         expiresAt.toDate(),
       )) {
         await _firestore
             .collection(
-          'email_otps',
-        )
+              'email_otps',
+            )
             .doc(cleanEmail)
             .delete();
 
@@ -455,8 +470,7 @@ Arroz Platform Support
       // WRONG OTP
       // --------------------------------------------------------
 
-      if (savedOtp !=
-          typedOtp.trim()) {
+      if (savedOtp != typedOtp.trim()) {
         return false;
       }
 
@@ -483,15 +497,12 @@ Arroz Platform Support
   // CREATE FIREBASE EMAIL ACCOUNT
   // ============================================================
 
-  Future<UserCredential>
-  registerWithEmail({
+  Future<UserCredential> registerWithEmail({
     required String email,
     required String password,
   }) async {
-    return await _auth
-        .createUserWithEmailAndPassword(
-      email:
-      email.trim().toLowerCase(),
+    return await _auth.createUserWithEmailAndPassword(
+      email: email.trim().toLowerCase(),
       password: password,
     );
   }
@@ -500,85 +511,65 @@ Arroz Platform Support
   // LOGIN WITH EMAIL
   // ============================================================
 
-  Future<UserCredential>
-  loginWithEmail({
+  Future<UserCredential> loginWithEmail({
     required String email,
     required String password,
   }) async {
-    return await _auth
-        .signInWithEmailAndPassword(
-      email:
-      email.trim().toLowerCase(),
+    return await _auth.signInWithEmailAndPassword(
+      email: email.trim().toLowerCase(),
       password: password,
     );
   }
 
   // ============================================================
-  // RESET PASSWORD
+  // UPDATE PASSWORD VIA OTP (CLOUD FUNCTION BACKEND)
   // ============================================================
 
-  Future<void>
-  resetPasswordAfterEmailOTP({
+  Future<void> updatePasswordWithOTP({
     required String email,
     required String newPassword,
   }) async {
-    final cleanEmail =
-    email.trim().toLowerCase();
-
-    if (newPassword.length < 8) {
-      throw Exception(
-        'Ang password ay dapat hindi bababa sa 8 characters.',
-      );
-    }
+    final cleanEmail = email.trim().toLowerCase();
 
     try {
-      final userQuery =
-      await _firestore
+      // 1. Siguraduhing umiiral ang account sa Firestore
+      final userQuery = await _firestore
           .collection('users')
-          .where(
-        'email',
-        isEqualTo: cleanEmail,
-      )
+          .where('email', isEqualTo: cleanEmail)
           .limit(1)
           .get();
 
       if (userQuery.docs.isEmpty) {
-        throw Exception(
-          'Hindi makita ang account.',
-        );
+        throw Exception('Hindi mahanap ang account sa database.');
       }
 
-      final userData =
-      userQuery.docs.first.data();
+      // 2. TAMA AT UP-TO-DATE URL GAMIT ANG IYONG PROJECT ID (arroz-sys)
+      final url = Uri.parse('https://us-central1-arroz-sys.cloudfunctions.net/adminResetPassword');
+      
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': cleanEmail,
+          'newPassword': newPassword,
+        }),
+      );
 
-      final uid =
-      userData['uid'];
-
-      if (uid == null ||
-          uid.toString().isEmpty) {
-        throw Exception(
-          'Walang Firebase UID ang account na ito.',
-        );
+      if (response.statusCode != 200) {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Bigo sa pagpapalit ng password.');
       }
 
-      await _auth
-          .sendPasswordResetEmail(
-        email: cleanEmail,
-      );
-    } on FirebaseAuthException catch (e) {
-      debugPrint(
-        'PASSWORD RESET FIREBASE ERROR: ${e.code}',
-      );
+      // 3. I-update ang timestamp record sa Firestore
+      final userDoc = userQuery.docs.first;
+      await userDoc.reference.update({
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      });
 
-      throw Exception(
-        'Hindi ma-reset ang password. Subukan muli.',
-      );
+      debugPrint('SUCCESS: Password updated successfully for $cleanEmail');
     } catch (e) {
-      debugPrint(
-        'PASSWORD RESET ERROR: $e',
-      );
-
-      rethrow;
+      debugPrint('UPDATE PASSWORD ERROR: $e');
+      throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -587,31 +578,22 @@ Arroz Platform Support
   // ============================================================
 
   String normalizePhilippinePhone(String phone) {
-    String cleaned = phone
-        .trim()
-        .replaceAll(RegExp(r'[\s\-()]'), '');
+    String cleaned = phone.trim().replaceAll(RegExp(r'[\s\-()]'), '');
 
-    // 09171234567 -> +639171234567
-    if (cleaned.startsWith('09') &&
-        cleaned.length == 11) {
+    if (cleaned.startsWith('09') && cleaned.length == 11) {
       return '+63${cleaned.substring(1)}';
     }
 
-    // 639171234567 -> +639171234567
-    if (cleaned.startsWith('63') &&
-        cleaned.length == 12) {
+    if (cleaned.startsWith('63') && cleaned.length == 12) {
       return '+$cleaned';
     }
 
-    // +639171234567
-    if (cleaned.startsWith('+63') &&
-        cleaned.length == 13) {
+    if (cleaned.startsWith('+63') && cleaned.length == 13) {
       return cleaned;
     }
 
     throw Exception(
-      'Invalid Philippine mobile number. '
-          'Gamitin ang format na 09XXXXXXXXX.',
+      'Invalid Philippine mobile number. Gamitin ang format na 09XXXXXXXXX.',
     );
   }
 
@@ -634,8 +616,7 @@ Arroz Platform Support
       );
     }
 
-    final url =
-        '$_textBeeBaseUrl/$_textBeeDeviceId/send-sms';
+    final url = '$_textBeeBaseUrl/$_textBeeDeviceId/send-sms';
 
     try {
       debugPrint(
@@ -644,19 +625,19 @@ Arroz Platform Support
 
       final response = await http
           .post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': _textBeeApiKey,
-        },
-        body: jsonEncode({
-          'recipients': [phone],
-          'message': message,
-        }),
-      )
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': _textBeeApiKey,
+            },
+            body: jsonEncode({
+              'recipients': [phone],
+              'message': message,
+            }),
+          )
           .timeout(
-        const Duration(seconds: 30),
-      );
+            const Duration(seconds: 30),
+          );
 
       debugPrint(
         'TEXTBEE STATUS: ${response.statusCode}',
@@ -666,11 +647,9 @@ Arroz Platform Support
         'TEXTBEE RESPONSE: ${response.body}',
       );
 
-      if (response.statusCode < 200 ||
-          response.statusCode >= 300) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
-          'TextBee failed '
-              '(${response.statusCode}): ${response.body}',
+          'TextBee failed (${response.statusCode}): ${response.body}',
         );
       }
 
@@ -693,41 +672,34 @@ Arroz Platform Support
   Future<String> generatePhoneOTP({
     required String phoneNumber,
   }) async {
-    final phone =
-    normalizePhilippinePhone(phoneNumber);
+    final phone = normalizePhilippinePhone(phoneNumber);
 
     final random = Random();
 
     final otp = List.generate(
       6,
-          (_) => random.nextInt(10).toString(),
+      (_) => random.nextInt(10).toString(),
     ).join();
 
-    final expiresAt =
-    DateTime.now().add(
+    final expiresAt = DateTime.now().add(
       const Duration(minutes: 5),
     );
 
-    // SAVE OTP FIRST
     await _firestore
         .collection('phone_otps')
         .doc(phone)
         .set({
       'phoneNumber': phone,
       'otp': otp,
-      'createdAt':
-      FieldValue.serverTimestamp(),
-      'expiresAt':
-      Timestamp.fromDate(expiresAt),
+      'createdAt': FieldValue.serverTimestamp(),
+      'expiresAt': Timestamp.fromDate(expiresAt),
     });
 
     try {
       await sendTextBeeSMS(
         phoneNumber: phone,
-        message:
-        'Arroz verification code: $otp\n\n'
-            'Valid for 5 minutes. '
-            'Huwag ibahagi ang code na ito.',
+        message: 'Arroz verification code: $otp\n\n'
+            'Valid for 5 minutes. Huwag ibahagi ang code na ito.',
       );
 
       debugPrint(
@@ -736,7 +708,6 @@ Arroz Platform Support
 
       return otp;
     } catch (e) {
-      // DELETE OTP IF SMS FAILED
       await _firestore
           .collection('phone_otps')
           .doc(phone)
@@ -755,18 +726,15 @@ Arroz Platform Support
     required String typedOtp,
   }) async {
     try {
-      final phone =
-      normalizePhilippinePhone(phoneNumber);
+      final phone = normalizePhilippinePhone(phoneNumber);
 
-      final otp =
-      typedOtp.trim();
+      final otp = typedOtp.trim();
 
       if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
         return false;
       }
 
-      final doc =
-      await _firestore
+      final doc = await _firestore
           .collection('phone_otps')
           .doc(phone)
           .get();
@@ -785,17 +753,14 @@ Arroz Platform Support
         return false;
       }
 
-      final savedOtp =
-          data['otp']?.toString() ?? '';
+      final savedOtp = data['otp']?.toString() ?? '';
 
-      final expiresAt =
-      data['expiresAt'] as Timestamp?;
+      final expiresAt = data['expiresAt'] as Timestamp?;
 
       if (expiresAt == null) {
         return false;
       }
 
-      // EXPIRED
       if (DateTime.now().isAfter(
         expiresAt.toDate(),
       )) {
@@ -811,7 +776,6 @@ Arroz Platform Support
         return false;
       }
 
-      // WRONG OTP
       if (savedOtp != otp) {
         debugPrint(
           'PHONE OTP: Wrong OTP.',
@@ -820,7 +784,6 @@ Arroz Platform Support
         return false;
       }
 
-      // DELETE AFTER SUCCESS
       await _firestore
           .collection('phone_otps')
           .doc(phone)

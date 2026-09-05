@@ -1,1 +1,39 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"arroz-sys","appId":"1:861917748123:android:451bd52626691d4b7b5f3e","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"arroz-sys","configurations":{"android":"1:861917748123:android:451bd52626691d4b7b5f3e","ios":"1:861917748123:ios:a58db8f41663f64f7b5f3e","macos":"1:861917748123:ios:a58db8f41663f64f7b5f3e","web":"1:861917748123:web:103f11eccc105c457b5f3e","windows":"1:861917748123:web:62b1769444b5eb247b5f3e"}}}}},"functions":[{"source":"functions","codebase":"default","disallowLegacyRuntimeConfig":true,"ignore":["node_modules",".git","firebase-debug.log","firebase-debug.*.log","*.local"]}]}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "arroz-sys",
+          "appId": "1:861917748123:android:451bd52626691d4b7b5f3e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "arroz-sys",
+          "configurations": {
+            "android": "1:861917748123:android:451bd52626691d4b7b5f3e",
+            "ios": "1:861917748123:ios:a58db8f41663f64f7b5f3e",
+            "macos": "1:861917748123:ios:a58db8f41663f64f7b5f3e",
+            "web": "1:861917748123:web:103f11eccc105c457b5f3e",
+            "windows": "1:861917748123:web:62b1769444b5eb247b5f3e"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "source": "functions"
+    }
+  ]
+}
