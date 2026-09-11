@@ -10,8 +10,6 @@ import 'orders_page.dart';
 import 'package:provider/provider.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
-
-// Import ArrozTheme mula sa ProfilePage o ilagay sa hiwalay na theme file
 import 'profile_page.dart';
 
 class ProductPage extends StatefulWidget {
@@ -105,7 +103,7 @@ class _ProductPageState extends State<ProductPage> {
             ),
           ),
 
-          // 🌾 PRODUCT GRID (CONNECTED SA FIREBASE)
+          // 🌾 PRODUCT GRID (INVENTORIY-BASED)
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection("products").snapshots(),
@@ -120,12 +118,11 @@ class _ProductPageState extends State<ProductPage> {
                 final allDocs = snapshot.data?.docs ?? [];
 
                 final docs = allDocs.where((doc) {
-                  final product = doc.data() as Map<String, dynamic>;
+                  final product = doc.data() as Map<String, dynamic>? ?? {};
                   final isDeleted = product['isDeleted'] == true;
                   final name = (product['name'] ?? '').toString().toLowerCase();
-                  final description = (product['description'] ?? '').toString().toLowerCase();
 
-                  return !isDeleted && (name.contains(_searchQuery) || description.contains(_searchQuery));
+                  return !isDeleted && name.contains(_searchQuery);
                 }).toList();
 
                 if (docs.isEmpty) {
@@ -144,7 +141,7 @@ class _ProductPageState extends State<ProductPage> {
                   padding: const EdgeInsets.all(14),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 0.62,
+                    childAspectRatio: 0.68,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                   ),
@@ -154,11 +151,9 @@ class _ProductPageState extends State<ProductPage> {
                     final product = doc.data() as Map<String, dynamic>;
                     final String imageUrl = product['imageUrl'] ?? '';
                     final int deliveryDays = product['deliveryDays'] ?? 3;
-                    final int stock = product['stock'] ?? 0;
 
-                    final double unitKg = (product['unitKg'] ?? 50.0).toDouble();
-                    final double sellingKilo = (product['sellingPrice'] ?? 0.0).toDouble();
-                    final double sellingSako = sellingKilo * unitKg;
+                    final double totalKgStock = ((product['totalKg'] ?? 0.0) as num).toDouble();
+                    final double srp = ((product['srpPerKg'] ?? 0.0) as num).toDouble();
 
                     return InkWell(
                       onTap: () {
@@ -180,7 +175,6 @@ class _ProductPageState extends State<ProductPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Product Image Container
                             Expanded(
                               child: Stack(
                                 children: [
@@ -195,9 +189,9 @@ class _ProductPageState extends State<ProductPage> {
                                       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                                       child: Image.network(imageUrl, fit: BoxFit.cover),
                                     )
-                                        : const Icon(Icons.image, size: 48, color: Colors.grey),
+                                        : const Icon(Icons.agriculture_rounded, size: 48, color: Colors.grey),
                                   ),
-                                  if (stock <= 0)
+                                  if (totalKgStock <= 0)
                                     Positioned(
                                       top: 8,
                                       left: 8,
@@ -213,32 +207,30 @@ class _ProductPageState extends State<ProductPage> {
                                 ],
                               ),
                             ),
-                            // Product Info
                             Padding(
                               padding: const EdgeInsets.all(10.0),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    product['name'] ?? 'No Name',
+                                    product['name'] ?? 'Palay Item',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ArrozTheme.textDark),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    "₱${sellingKilo.toStringAsFixed(2)} /kg",
+                                    "₱${srp.toStringAsFixed(2)} /kg",
                                     style: const TextStyle(color: ArrozTheme.emerald, fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
-                                  Text(
-                                    "₱${sellingSako.toStringAsFixed(2)} /sako",
-                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.w500),
                                   ),
                                   const SizedBox(height: 6),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text("Stock: $stock sako", style: const TextStyle(color: ArrozTheme.textSub, fontSize: 10)),
+                                      Text(
+                                        "Stock: ${totalKgStock.toStringAsFixed(0)} kg",
+                                        style: const TextStyle(color: ArrozTheme.textSub, fontSize: 10),
+                                      ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
@@ -288,12 +280,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   final currentUser = FirebaseAuth.instance.currentUser;
 
   void _showAddToCartSheet(BuildContext pageContext) {
-    int selectedQuantity = 1;
-    String selectedVariation = "Kilo"; // Default: Kilo
-    int maxStockSako = widget.product['stock'] ?? 0;
-    double unitKg = (widget.product['unitKg'] ?? 50.0).toDouble();
-    double sellingKilo = (widget.product['sellingPrice'] ?? 0.0).toDouble();
-    double sellingSako = sellingKilo * unitKg;
+    int selectedQuantityKg = 1;
+    double totalKgStock = ((widget.product['totalKg'] ?? 0.0) as num).toDouble();
+    double srp = ((widget.product['srpPerKg'] ?? 0.0) as num).toDouble();
 
     showModalBottomSheet(
       context: pageContext,
@@ -301,8 +290,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            double currentUnitPrice = selectedVariation == "Kilo" ? sellingKilo : sellingSako;
-            double totalAmount = currentUnitPrice * selectedQuantity;
+            double totalAmount = srp * selectedQuantityKg;
 
             return Padding(
               padding: const EdgeInsets.all(20.0),
@@ -310,35 +298,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Pumili ng Variation at Dami", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
-                  const SizedBox(height: 12),
-
-                  // VARIATION SELECTOR (PER SAKO OR PER KILO)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: Center(child: Text("Per Kilo (₱${sellingKilo.toStringAsFixed(2)})")),
-                          selected: selectedVariation == "Kilo",
-                          selectedColor: ArrozTheme.emerald.withOpacity(0.2),
-                          onSelected: (bool selected) {
-                            if (selected) setSheetState(() => selectedVariation = "Kilo");
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: Center(child: Text("Per Sako (₱${sellingSako.toStringAsFixed(2)})")),
-                          selected: selectedVariation == "Sako",
-                          selectedColor: ArrozTheme.emerald.withOpacity(0.2),
-                          onSelected: (bool selected) {
-                            if (selected) setSheetState(() => selectedVariation = "Sako");
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
+                  const Text("Pumili ng Dami (Kilo)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                   const SizedBox(height: 15),
 
                   Row(
@@ -348,7 +308,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text("Kabuuan: ₱${totalAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 16, color: ArrozTheme.emerald, fontWeight: FontWeight.bold)),
-                          Text("Presyo: ₱${currentUnitPrice.toStringAsFixed(2)} / $selectedVariation", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          Text("Presyo: ₱${srp.toStringAsFixed(2)} / kg", style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         ],
                       ),
                       Container(
@@ -356,15 +316,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         child: Row(
                           children: [
                             IconButton(
-                              onPressed: () { if (selectedQuantity > 1) setSheetState(() => selectedQuantity--); },
+                              onPressed: () { if (selectedQuantityKg > 1) setSheetState(() => selectedQuantityKg--); },
                               icon: const Icon(Icons.remove, color: ArrozTheme.emerald, size: 18),
                             ),
-                            Text("$selectedQuantity", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                            Text("$selectedQuantityKg kg", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                             IconButton(
                               onPressed: () {
-                                // Limit stock restriction if Per Sako
-                                if (selectedVariation == "Sako" && selectedQuantity >= maxStockSako) return;
-                                setSheetState(() => selectedQuantity++);
+                                if ((selectedQuantityKg + 1) <= totalKgStock) {
+                                  setSheetState(() => selectedQuantityKg++);
+                                }
                               },
                               icon: const Icon(Icons.add, color: ArrozTheme.emerald, size: 18),
                             ),
@@ -382,21 +342,20 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         backgroundColor: ArrozTheme.warningOrange,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      onPressed: maxStockSako == 0 ? null : () async {
+                      onPressed: totalKgStock <= 0 ? null : () async {
                         if (currentUser == null) return;
                         Navigator.pop(sheetContext);
 
                         await FirebaseFirestore.instance
                             .collection("cart")
-                            .doc("${currentUser!.uid}_${widget.productId}_$selectedVariation")
+                            .doc("${currentUser!.uid}_${widget.productId}")
                             .set({
                           "userId": currentUser!.uid,
                           "productId": widget.productId,
                           "name": widget.product["name"],
-                          "price": currentUnitPrice,
-                          "variation": selectedVariation,
-                          "imageUrl": widget.product["imageUrl"],
-                          "quantity": selectedQuantity,
+                          "price": srp,
+                          "imageUrl": widget.product["imageUrl"] ?? "",
+                          "quantity": selectedQuantityKg,
                           "addedAt": FieldValue.serverTimestamp(),
                         }, SetOptions(merge: true));
 
@@ -407,7 +366,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           Navigator.of(pageContext).push(MaterialPageRoute(builder: (_) => const CartPage()));
                         }
                       },
-                      child: Text(maxStockSako == 0 ? "Out of Stock" : "Add to Cart", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: Text(totalKgStock <= 0 ? "Out of Stock" : "Add to Cart", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   )
                 ],
@@ -420,12 +379,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   void _showPaymentSheet(BuildContext pageContext, int initialQty) {
-    int selectedQuantity = initialQty;
-    String selectedVariation = "Kilo";
-    int maxStockSako = widget.product['stock'] ?? 0;
-    double unitKg = (widget.product['unitKg'] ?? 50.0).toDouble();
-    double sellingKilo = (widget.product['sellingPrice'] ?? 0.0).toDouble();
-    double sellingSako = sellingKilo * unitKg;
+    int selectedQuantityKg = initialQty;
+    double totalKgStock = ((widget.product['totalKg'] ?? 0.0) as num).toDouble();
+    double srp = ((widget.product['srpPerKg'] ?? 0.0) as num).toDouble();
 
     showModalBottomSheet(
       context: pageContext,
@@ -434,8 +390,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            double currentUnitPrice = selectedVariation == "Kilo" ? sellingKilo : sellingSako;
-            double totalAmount = currentUnitPrice * selectedQuantity;
+            double totalAmount = srp * selectedQuantityKg;
 
             return Padding(
               padding: EdgeInsets.only(
@@ -448,51 +403,24 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 children: [
                   const Text("Buy Now Options", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                   const Divider(),
-
-                  const Text("Piliin ang Variation:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: Center(child: Text("Per Kilo (₱${sellingKilo.toStringAsFixed(2)})")),
-                          selected: selectedVariation == "Kilo",
-                          selectedColor: ArrozTheme.emerald.withOpacity(0.2),
-                          onSelected: (bool selected) {
-                            if (selected) setSheetState(() => selectedVariation = "Kilo");
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: Center(child: Text("Per Sako (₱${sellingSako.toStringAsFixed(2)})")),
-                          selected: selectedVariation == "Sako",
-                          selectedColor: ArrozTheme.emerald.withOpacity(0.2),
-                          onSelected: (bool selected) {
-                            if (selected) setSheetState(() => selectedVariation = "Sako");
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
 
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Dami ($selectedVariation):", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                      const Text("Dami sa Kilo (kg):", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                       Row(
                         children: [
                           IconButton(
-                            onPressed: () { if (selectedQuantity > 1) setSheetState(() => selectedQuantity--); },
+                            onPressed: () { if (selectedQuantityKg > 1) setSheetState(() => selectedQuantityKg--); },
                             icon: const Icon(Icons.remove_circle_outline, color: ArrozTheme.emerald),
                           ),
-                          Text("$selectedQuantity", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          Text("$selectedQuantityKg kg", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           IconButton(
                             onPressed: () {
-                              if (selectedVariation == "Sako" && selectedQuantity >= maxStockSako) return;
-                              setSheetState(() => selectedQuantity++);
+                              if ((selectedQuantityKg + 1) <= totalKgStock) {
+                                setSheetState(() => selectedQuantityKg++);
+                              }
                             },
                             icon: const Icon(Icons.add_circle_outline, color: ArrozTheme.emerald),
                           ),
@@ -511,7 +439,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         backgroundColor: ArrozTheme.emerald,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      onPressed: maxStockSako == 0 ? null : () {
+                      onPressed: totalKgStock <= 0 ? null : () {
                         if (currentUser == null) return;
                         Navigator.pop(sheetContext);
 
@@ -522,12 +450,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               orderItems: [
                                 {
                                   "productId": widget.productId,
-                                  "name": "${widget.product['name']} ($selectedVariation)",
-                                  "price": currentUnitPrice,
-                                  "variation": selectedVariation,
-                                  "quantity": selectedQuantity,
+                                  "name": widget.product['name'],
+                                  "price": srp,
+                                  "quantity": selectedQuantityKg,
                                   "subtotal": totalAmount,
-                                  "imageUrl": widget.product["imageUrl"],
+                                  "imageUrl": widget.product["imageUrl"] ?? "",
                                 }
                               ],
                               totalAmount: totalAmount,
@@ -535,7 +462,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           ),
                         );
                       },
-                      child: Text(maxStockSako == 0 ? "Out of Stock" : "Proceed to Checkout", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: Text(totalKgStock <= 0 ? "Out of Stock" : "Proceed to Checkout", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   )
                 ],
@@ -551,9 +478,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   Widget build(BuildContext context) {
     final String imageUrl = widget.product['imageUrl'] ?? '';
     final int deliveryDays = widget.product['deliveryDays'] ?? 3;
-    final double unitKg = (widget.product['unitKg'] ?? 50.0).toDouble();
-    final double sellingKilo = (widget.product['sellingPrice'] ?? 0.0).toDouble();
-    final double sellingSako = sellingKilo * unitKg;
+    final double totalKgStock = ((widget.product['totalKg'] ?? 0.0) as num).toDouble();
+    final double srp = ((widget.product['srpPerKg'] ?? 0.0) as num).toDouble();
 
     return Scaffold(
       backgroundColor: ArrozTheme.bgGrey,
@@ -566,17 +492,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image Header
             Container(
               height: 280,
               width: double.infinity,
               color: Colors.white,
               child: imageUrl.isNotEmpty
                   ? Image.network(imageUrl, fit: BoxFit.cover)
-                  : const Icon(Icons.image, size: 80, color: Colors.grey),
+                  : const Icon(Icons.agriculture_rounded, size: 80, color: Colors.grey),
             ),
 
-            // Details Card
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16.0),
@@ -588,14 +512,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text("₱${sellingKilo.toStringAsFixed(2)}", style: const TextStyle(color: ArrozTheme.emerald, fontSize: 24, fontWeight: FontWeight.bold)),
-                      const Text(" / kg", style: TextStyle(color: ArrozTheme.emerald, fontSize: 14)),
-                      const SizedBox(width: 12),
-                      Text("(₱${sellingSako.toStringAsFixed(2)} / sako)", style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(
+                        "₱${srp.toStringAsFixed(2)}",
+                        style: const TextStyle(color: ArrozTheme.emerald, fontSize: 24, fontWeight: FontWeight.bold),
+                      ),
+                      const Text(
+                        " / kg",
+                        style: TextStyle(color: ArrozTheme.emerald, fontSize: 14),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text(widget.product['name'] ?? 'No Name', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
+                  Text(widget.product['name'] ?? 'Palay Item', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -614,7 +542,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: ArrozTheme.bgGrey, borderRadius: BorderRadius.circular(6)),
-                        child: Text("Stock: ${widget.product['stock'] ?? 0} sako", style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
+                        child: Text("Stock: ${totalKgStock.toStringAsFixed(0)} kg", style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
                       ),
                     ],
                   ),
@@ -624,7 +552,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
             const SizedBox(height: 10),
 
-            // Description Section
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16.0),
@@ -632,12 +559,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Deskripsyon ng Produkto", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
+                  const Text("Detalye ng Palay", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                   const SizedBox(height: 8),
-                  Text(
-                    widget.product['description'] ?? 'Walang nakalagay na deskripsyon.',
-                    style: const TextStyle(fontSize: 13, color: ArrozTheme.textDark, height: 1.5),
-                  ),
+                  Text("Uri: ${widget.product['type'] ?? 'N/A'}", style: const TextStyle(fontSize: 13, color: ArrozTheme.textDark)),
+                  const SizedBox(height: 4),
+                  Text("Kondisyon: ${widget.product['condition'] ?? 'N/A'}", style: const TextStyle(fontSize: 13, color: ArrozTheme.textDark)),
                 ],
               ),
             ),

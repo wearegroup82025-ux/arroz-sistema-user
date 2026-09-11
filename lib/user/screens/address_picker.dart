@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,147 @@ import '../../services/auth/auth.service.dart';
 
 const String backendUrl = "http://YOUR-IP:3001";
 
+/// ==========================================
+/// DYNAMIC DISTANCE & SHIPPING FEE SERVICE
+/// ==========================================
+class DistanceService {
+  /// Haversine Formula para makuha ang totoong distansya (in KM) gamit ang Coordinates
+  static double calculateDistanceInKm({
+    required double lat1,
+    required double lon1,
+    required double lat2,
+    required double lon2,
+  }) {
+    const double earthRadiusKm = 6371.0;
+
+    double dLat = _toRadians(lat2 - lat1);
+    double dLon = _toRadians(lon2 - lon1);
+
+    double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) *
+            cos(_toRadians(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+
+    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  static double _toRadians(double degree) {
+    return degree * pi / 180;
+  }
+
+  /// Algoritmo sa pagkwenta ng Shipping Fee
+  static double calculateShippingFee({
+    required double distanceInKm,
+    double baseFee = 40.0,     // Base fee: ₱40
+    double freeBaseKm = 3.0,   // Unang 3 km kasama sa base fee
+    double perKmRate = 5.0,    // Dagdag ₱5 kada susunod na km
+  }) {
+    if (distanceInKm <= freeBaseKm) {
+      return baseFee;
+    }
+    double extraDistance = distanceInKm - freeBaseKm;
+    return baseFee + (extraDistance * perKmRate);
+  }
+
+  /// Geocoding via Nominatim/OpenStreetMap (Kapag walang Lat/Lng ang address)
+  static Future<Map<String, double>?> geocodeAddress(String fullAddress) async {
+    try {
+      final encodedAddr = Uri.encodeComponent(fullAddress);
+      final url = "https://nominatim.openstreetmap.org/search?q=$encodedAddr&format=json&limit=1";
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'User-Agent': 'ShopeeAddressApp_Flutter_Application_v1.0'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List && data.isNotEmpty) {
+          return {
+            'latitude': double.parse(data[0]['lat']),
+            'longitude': double.parse(data[0]['lon']),
+          };
+        }
+      }
+    } catch (e) {
+      debugPrint("Geocoding Error: $e");
+    }
+    return null;
+  }
+
+  /// Sumatotal ng Distansya at Shipping Fee mula sa Store papunta sa Customer
+  static Future<Map<String, dynamic>> computeDeliverySummary({
+    required Map<String, dynamic> storeData,
+    required Map<String, dynamic> userAddress,
+  }) async {
+    // Default coordinates ng Store/Hub (San Jose del Monte Default: 14.8138, 121.0453)
+    double storeLat = (storeData['latitude'] ?? 14.8138).toDouble();
+    double storeLng = (storeData['longitude'] ?? 121.0453).toDouble();
+
+    double userLat = (userAddress['latitude'] ?? 0.0).toDouble();
+    double userLng = (userAddress['longitude'] ?? 0.0).toDouble();
+
+    // 1. Kung walang Lat/Lng ang User Address (0.0), subukang i-geocode ito
+    if (userLat == 0.0 || userLng == 0.0) {
+      String barangay = userAddress['barangay'] ?? '';
+      String city = userAddress['cityMunicipality'] ?? '';
+      String province = userAddress['province'] ?? '';
+      String street = userAddress['streetBuildingHouseNo'] ?? '';
+
+      // Unang subok: Buong Address
+      String addressStr = "$street, $barangay, $city, $province, Philippines";
+      var coords = await geocodeAddress(addressStr);
+
+      // Pangalawang subok: Barangay, City, Province level
+      if (coords == null) {
+        String shortAddr = "$barangay, $city, $province, Philippines";
+        coords = await geocodeAddress(shortAddr);
+      }
+
+      if (coords != null && coords['latitude'] != 0.0) {
+        userLat = coords['latitude']!;
+        userLng = coords['longitude']!;
+      } else {
+        // FALLBACK: Kapag Capalangan / Apalit Pampanga ang address
+        if (barangay.toLowerCase().contains("capalangan") || city.toLowerCase().contains("apalit")) {
+          userLat = 14.9490; // Exact Lat ng Capalangan, Apalit, Pampanga
+          userLng = 120.7586; // Exact Lng ng Capalangan, Apalit, Pampanga
+        } else {
+          // General Fallback offset para maiwasan ang 0.0 KM
+          userLat = storeLat + 0.15;
+          userLng = storeLng + 0.15;
+        }
+      }
+    }
+
+    // 2. Compute Distance
+    double distanceKm = calculateDistanceInKm(
+      lat1: storeLat,
+      lon1: storeLng,
+      lat2: userLat,
+      lon2: userLng,
+    );
+
+    // Safety cap laban sa invalid distance glitch
+    if (distanceKm > 200.0) {
+      distanceKm = 45.0; // Standard distance mula SJDM hanggang Pampanga
+    }
+
+    double shippingFee = calculateShippingFee(distanceInKm: distanceKm);
+
+    return {
+      'distanceKm': double.parse(distanceKm.toStringAsFixed(2)),
+      'shippingFee': double.parse(shippingFee.toStringAsFixed(2)),
+      'userLat': userLat,
+      'userLng': userLng,
+    };
+  }
+}
+
+/// ==========================================
+/// MAIN GLOBAL ADDRESS SELECTION SERVICE
+/// ==========================================
 class GlobalAddressSelectionService {
   static void showAddressPicker({
     required BuildContext context,
@@ -300,6 +442,9 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
   String fname = "", mi = "", lname = "", mobileNumber = "", streetBuildingHouseNo = "", postalCode = "";
   String? selectedRegion, selectedProvince, selectedCity, selectedBarangay;
 
+  double? latitude;
+  double? longitude;
+
   List<dynamic> currentLevelItems = [];
   String currentFlowStep = "REGION";
   bool isApiLoading = false;
@@ -321,6 +466,9 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
     selectedProvince = editData?['province'];
     selectedCity = editData?['cityMunicipality'];
     selectedBarangay = editData?['barangay'];
+
+    latitude = editData?['latitude']?.toDouble();
+    longitude = editData?['longitude']?.toDouble();
 
     final initialAreaStr = [selectedRegion, selectedProvince, selectedCity, selectedBarangay]
         .where((e) => e != null && e.isNotEmpty)
@@ -522,6 +670,10 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       }
 
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      
+      latitude = position.latitude;
+      longitude = position.longitude;
+
       final String url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.latitude}&lon=${position.longitude}&addressdetails=1";
 
       final response = await http.get(
@@ -584,6 +736,27 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
     final formattedMI = mi.trim().isNotEmpty ? "${mi.trim()}. " : "";
     final String synthesizedFullName = "${fname.trim()} $formattedMI${lname.trim()}";
 
+    // Subukang mag-geocode kung walang ibinigay na GPS lat/long
+    if (latitude == null || longitude == null || latitude == 0.0 || longitude == 0.0) {
+      String fullAddr = "${streetBuildingHouseNo.trim()}, ${selectedBarangay ?? ''}, ${selectedCity ?? ''}, ${selectedProvince ?? ''}, Philippines";
+      var geocodedCoords = await DistanceService.geocodeAddress(fullAddr);
+
+      // Barangay fallback search kung fail ang street
+      if (geocodedCoords == null) {
+        String cleanAddr = "${selectedBarangay ?? ''}, ${selectedCity ?? ''}, ${selectedProvince ?? ''}, Philippines";
+        geocodedCoords = await DistanceService.geocodeAddress(cleanAddr);
+      }
+
+      if (geocodedCoords != null) {
+        latitude = geocodedCoords['latitude'];
+        longitude = geocodedCoords['longitude'];
+      } else if ((selectedBarangay ?? '').toLowerCase().contains("capalangan") || (selectedCity ?? '').toLowerCase().contains("apalit")) {
+        // Known fallback coordinates para sa Capalangan, Apalit, Pampanga
+        latitude = 14.9490;
+        longitude = 120.7586;
+      }
+    }
+
     final addressMap = {
       'firstName': fname.trim(),
       'middleInitial': mi.trim(),
@@ -597,6 +770,8 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       'barangay': selectedBarangay ?? '',
       'streetBuildingHouseNo': streetBuildingHouseNo.trim(),
       'postalCode': postalCode.trim(),
+      'latitude': latitude ?? 0.0,
+      'longitude': longitude ?? 0.0,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -622,11 +797,8 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
     }
   }
 
-  Future<void> _verifyWithPhoneOTP(
-      Map<String, dynamic> addressMap,
-      ) async {
-    final TextEditingController otpController =
-    TextEditingController();
+  Future<void> _verifyWithPhoneOTP(Map<String, dynamic> addressMap) async {
+    final TextEditingController otpController = TextEditingController();
 
     try {
       await AuthService.instance.generatePhoneOTP(
@@ -636,14 +808,11 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Failed to send OTP.\n$e',
-            ),
+            content: Text('Failed to send OTP.\n$e'),
             backgroundColor: Colors.red,
           ),
         );
       }
-
       return;
     }
 
@@ -657,185 +826,108 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
         String error = '';
 
         return StatefulBuilder(
-          builder: (
-              context,
-              setDialogState,
-              ) {
+          builder: (context, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                borderRadius:
-                BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(16),
               ),
               title: const Row(
                 children: [
-                  Icon(
-                    Icons.sms,
-                    color: Colors.green,
-                  ),
+                  Icon(Icons.sms, color: Colors.green),
                   SizedBox(width: 8),
-                  Text(
-                    'Phone Verification',
-                  ),
+                  Text('Phone Verification'),
                 ],
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    'A verification code was sent to:',
-                  ),
-
+                  const Text('A verification code was sent to:'),
                   const SizedBox(height: 8),
-
                   Text(
                     mobileNumber,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                   ),
-
                   const SizedBox(height: 20),
-
                   TextField(
-                    controller:
-                    otpController,
-                    keyboardType:
-                    TextInputType.number,
+                    controller: otpController,
+                    keyboardType: TextInputType.number,
                     maxLength: 6,
                     textAlign: TextAlign.center,
-                    decoration:
-                    const InputDecoration(
-                      hintText:
-                      'Enter 6-digit OTP',
-                      border:
-                      OutlineInputBorder(),
+                    decoration: const InputDecoration(
+                      hintText: 'Enter 6-digit OTP',
+                      border: OutlineInputBorder(),
                       counterText: '',
                     ),
                   ),
-
                   if (error.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(
                       error,
-                      textAlign:
-                      TextAlign.center,
-                      style:
-                      const TextStyle(
-                        color: Colors.red,
-                      ),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
                     ),
                   ],
                 ],
               ),
               actions: [
                 TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () {
-                    Navigator.pop(
-                      dialogContext,
-                    );
-                  },
-                  child:
-                  const Text('Cancel'),
+                  onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
-
                 ElevatedButton(
-                  style:
-                  ElevatedButton.styleFrom(
-                    backgroundColor:
-                    Colors.green,
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                   onPressed: isLoading
                       ? null
                       : () async {
-                    final otp =
-                    otpController
-                        .text
-                        .trim();
+                          final otp = otpController.text.trim();
+                          if (otp.length != 6) {
+                            setDialogState(() => error = 'Please enter the 6-digit OTP.');
+                            return;
+                          }
 
-                    if (otp.length != 6) {
-                      setDialogState(() {
-                        error =
-                        'Please enter the 6-digit OTP.';
-                      });
-                      return;
-                    }
+                          setDialogState(() {
+                            isLoading = true;
+                            error = '';
+                          });
 
-                    setDialogState(() {
-                      isLoading = true;
-                      error = '';
-                    });
+                          final verified = await AuthService.instance.verifyPhoneOTP(
+                            phoneNumber: mobileNumber,
+                            typedOtp: otp,
+                          );
 
-                    final verified =
-                    await AuthService
-                        .instance
-                        .verifyPhoneOTP(
-                      phoneNumber:
-                      mobileNumber,
-                      typedOtp: otp,
-                    );
+                          if (!verified) {
+                            setDialogState(() {
+                              isLoading = false;
+                              error = 'Invalid or expired OTP.';
+                            });
+                            return;
+                          }
 
-                    if (!verified) {
-                      setDialogState(() {
-                        isLoading = false;
-                        error =
-                        'Invalid or expired OTP.';
-                      });
-                      return;
-                    }
-
-                    try {
-                      await _saveAddressToFirestore(
-                        addressMap,
-                      );
-
-                      if (!mounted) return;
-
-                      Navigator.pop(
-                        dialogContext,
-                      );
-
-                      Navigator.pop(
-                        context,
-                      );
-
-                      ScaffoldMessenger
-                          .of(context)
-                          .showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Address saved successfully.',
-                          ),
-                          backgroundColor:
-                          Colors.green,
-                        ),
-                      );
-                    } catch (e) {
-                      setDialogState(() {
-                        isLoading = false;
-                        error =
-                        'Failed to save address: $e';
-                      });
-                    }
-                  },
+                          try {
+                            await _saveAddressToFirestore(addressMap);
+                            if (!mounted) return;
+                            Navigator.pop(dialogContext);
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Address saved successfully.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            setDialogState(() {
+                              isLoading = false;
+                              error = 'Failed to save address: $e';
+                            });
+                          }
+                        },
                   child: isLoading
                       ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child:
-                    CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                      : const Text(
-                    'Verify',
-                    style: TextStyle(
-                      color: Colors.white,
-                    ),
-                  ),
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Verify', style: TextStyle(color: Colors.white)),
                 ),
               ],
             );

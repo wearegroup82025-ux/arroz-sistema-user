@@ -2,13 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+
 import 'cart_page.dart';
 import 'orders_page.dart';
 import 'product_page.dart';
 import 'profile_page.dart';
 import 'messages_page.dart';
 import 'login_page.dart';
-import 'package:provider/provider.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
 
@@ -27,6 +28,8 @@ class HomeUserPage extends StatefulWidget {
 class _HomeUserPageState extends State<HomeUserPage> {
   int _currentIndex = 0;
   StreamSubscription<DocumentSnapshot>? _userSubscription;
+  bool _hasShownDeletionDialog = false;
+  bool _isPendingDeletion = false;
 
   @override
   void initState() {
@@ -35,7 +38,12 @@ class _HomeUserPageState extends State<HomeUserPage> {
     _listenToAccountStatus();
   }
 
-  // 🔥 UPDATED REAL-TIME LISTENER NA MAY GRACE PERIOD PARA SA BAGONG ACCOUNTS
+  @override
+  void dispose() {
+    _userSubscription?.cancel();
+    super.dispose();
+  }
+
   void _listenToAccountStatus() {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
@@ -45,71 +53,148 @@ class _HomeUserPageState extends State<HomeUserPage> {
         .doc(currentUser.uid)
         .snapshots()
         .listen((snapshot) async {
-      // 1. Kung wala pang nababasang user document sa Firestore
-      if (!snapshot.exists) {
-        // Maghintay ng 2.5 seconds para bigyan ng oras ang registration flow na matapos ang pag-set sa Firestore
-        await Future.delayed(const Duration(milliseconds: 2500));
+      if (!mounted) return;
 
-        // Mag-recheck gamit ang direct get() call
-        final reCheck = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
-
-        // Kung talagang wala pa ring document pagkatapos ng delay, saka lamang mag-force logout
-        if (!reCheck.exists) {
-          await _forceLogout(
-            title: 'Account Deleted',
-            message: 'Ang iyong account ay nabura na ng admin.',
-          );
-        }
+      // Kapag nabura na nang tuluyan ang document sa Firestore (Admin o Scheduled Deletion)
+      if (!snapshot.exists || snapshot.data() == null) {
+        await _forceLogout(
+          title: 'Account Deleted',
+          message: 'Ang iyong account ay nabura na.',
+        );
         return;
       }
 
-      final data = snapshot.data();
-      if (data != null) {
-        final bool isBlocked = data['isBlocked'] ?? false;
-        final bool isScheduledForDeletion = data['isScheduledForDeletion'] ?? false;
+      final data = snapshot.data() as Map<String, dynamic>;
+      final bool isBlocked = data['isBlocked'] ?? false;
+      final bool pending = data['isPendingDeletion'] ?? data['isScheduledForDeletion'] ?? false;
 
-        // 2. Kung naka-block o naka-schedule for deletion ang account
-        if (isBlocked || isScheduledForDeletion) {
-          await _forceLogout(
-            title: isBlocked ? 'Account Blocked' : 'Account Deleted',
-            message: isBlocked
-                ? 'Ang iyong account ay hinarang ng admin.'
-                : 'Ang iyong account ay naka-schedule na para sa deletion.',
-          );
-        }
+      setState(() {
+        _isPendingDeletion = pending;
+      });
+
+      // 1. Kapag naka-block ang account
+      if (isBlocked) {
+        await _forceLogout(
+          title: 'Account Blocked',
+          message: 'Ang iyong account ay hinarang ng admin.',
+        );
+        return;
       }
+
+      // 2. Kapag naka-pending deletion (Grace period)
+      if (pending) {
+        if (!_hasShownDeletionDialog) {
+          _hasShownDeletionDialog = true;
+          _showPendingDeletionDialog(currentUser.uid);
+        }
+      } else {
+        _hasShownDeletionDialog = false;
+      }
+    }, onError: (_) {
+      // Safety catch para sa stream error kapag biglang nawalan ng permission (e.g. deleted account rules)
+      _navigateToLogin();
     });
   }
 
-  Future<void> _forceLogout({required String title, required String message}) async {
-    // I-cancel ang listener para hindi paulit-ulit na tumakbo
-    await _userSubscription?.cancel();
-
-    // Sign out sa Firebase Auth
-    await FirebaseAuth.instance.signOut();
-
-    if (!mounted) return;
-
-    // Ipakita ang prompt dialog sa user
+  // Dialog para sa Deletion Grace Period
+  void _showPendingDeletionDialog(String userId) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 26),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Naka-schedule para sa Pagbura',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Ang iyong account ay kasalukuyang nakatakdang burahin. Nais mo bang magpatuloy at bawiin ang pagbura upang pumasok sa app, o kanselahin at bumalik sa Login?',
+          style: TextStyle(fontSize: 13),
+        ),
+        actions: [
+          // KANSELIN / ISARA: Mag-log out at bumalik sa Login Page
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _userSubscription?.cancel();
+              await FirebaseAuth.instance.signOut();
+              _navigateToLogin();
+            },
+            child: const Text('Kanselahin (Mag-logout)', style: TextStyle(color: Colors.grey)),
+          ),
+          // MAGPATULOY: Ibabawi ang deletion at papasok sa Home User
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _cancelAccountDeletion(userId);
+            },
+            child: const Text('Magpatuloy (Bawiin)', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Restore / Bawiin ang deletion
+  Future<void> _cancelAccountDeletion(String userId) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'isPendingDeletion': false,
+        'isScheduledForDeletion': false,
+        'deletionRequestedAt': FieldValue.delete(),
+        'scheduledDeletionDate': FieldValue.delete(),
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Matagumpay na nabawi ang iyong account!"),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error sa pagbawi: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _forceLogout({required String title, required String message}) async {
+    await _userSubscription?.cancel();
+    await FirebaseAuth.instance.signOut();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginUserPage()),
-                    (route) => false,
-              );
+              _navigateToLogin();
             },
             child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
@@ -118,19 +203,19 @@ class _HomeUserPageState extends State<HomeUserPage> {
     );
   }
 
-  @override
-  void dispose() {
-    _userSubscription?.cancel();
-    super.dispose();
+  void _navigateToLogin() {
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginUserPage()),
+      (route) => false,
+    );
   }
 
   List<Widget> _buildPages() {
     return [
       _DashboardView(
         language: context.watch<LanguageProvider>().language,
-        onLanguageToggle: () {
-          context.read<LanguageProvider>().toggleLanguage();
-        },
+        onLanguageToggle: () => context.read<LanguageProvider>().toggleLanguage(),
         onNavigateToProducts: () => setState(() => _currentIndex = 1),
         onNavigateToCart: () => setState(() => _currentIndex = 2),
         onNavigateToOrders: () => setState(() => _currentIndex = 3),
@@ -146,14 +231,61 @@ class _HomeUserPageState extends State<HomeUserPage> {
   Widget build(BuildContext context) {
     final language = context.watch<LanguageProvider>().language;
     final local = AppLocalizations(language);
-    final currentPages = _buildPages();
     final theme = Theme.of(context);
+    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surfaceContainerLowest,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: currentPages,
+      body: Column(
+        children: [
+          // Deletion Warning Banner
+          if (_isPendingDeletion && currentUser != null)
+            Material(
+              color: Colors.orange.shade800,
+              child: SafeArea(
+                bottom: false,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          "Nakatakdang burahin ang iyong account.",
+                          style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _cancelAccountDeletion(currentUser.uid),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            "I-BAWI",
+                            style: TextStyle(
+                              color: Colors.orange.shade900,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _buildPages(),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
@@ -164,29 +296,29 @@ class _HomeUserPageState extends State<HomeUserPage> {
         onDestinationSelected: (index) => setState(() => _currentIndex = index),
         destinations: [
           NavigationDestination(
-              icon: const Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home, color: theme.colorScheme.primary),
-              label: local.home
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home, color: theme.colorScheme.primary),
+            label: local.home,
           ),
           NavigationDestination(
-              icon: const Icon(Icons.storefront_outlined),
-              selectedIcon: Icon(Icons.storefront, color: theme.colorScheme.primary),
-              label: local.products
+            icon: const Icon(Icons.storefront_outlined),
+            selectedIcon: Icon(Icons.storefront, color: theme.colorScheme.primary),
+            label: local.products,
           ),
           NavigationDestination(
-              icon: const Icon(Icons.shopping_cart_outlined),
-              selectedIcon: Icon(Icons.shopping_cart, color: theme.colorScheme.primary),
-              label: local.cart
+            icon: const Icon(Icons.shopping_cart_outlined),
+            selectedIcon: Icon(Icons.shopping_cart, color: theme.colorScheme.primary),
+            label: local.cart,
           ),
           NavigationDestination(
-              icon: const Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long, color: theme.colorScheme.primary),
-              label: local.orders
+            icon: const Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long, color: theme.colorScheme.primary),
+            label: local.orders,
           ),
           NavigationDestination(
-              icon: const Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person, color: theme.colorScheme.primary),
-              label: local.profile
+            icon: const Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person, color: theme.colorScheme.primary),
+            label: local.profile,
           ),
         ],
       ),
@@ -239,8 +371,8 @@ class _DashboardView extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                          local.notifTitle,
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)
+                        local.notifTitle,
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                       IconButton(
                         icon: Icon(Icons.done_all, color: theme.colorScheme.primary, size: 20),
@@ -329,16 +461,10 @@ class _DashboardView extends StatelessWidget {
                                 ),
                                 onTap: () {
                                   docs[index].reference.update({'isRead': true});
-                                  if (type == 'ORDER_UPDATE') {
-                                    Navigator.pop(context);
-                                    onNavigateToOrders();
-                                  } else if (type == 'CART_NUDGE') {
-                                    Navigator.pop(context);
-                                    onNavigateToCart();
-                                  } else if (type == 'RESTOCK_ALERT') {
-                                    Navigator.pop(context);
-                                    onNavigateToProducts();
-                                  }
+                                  Navigator.pop(context);
+                                  if (type == 'ORDER_UPDATE') onNavigateToOrders();
+                                  if (type == 'CART_NUDGE') onNavigateToCart();
+                                  if (type == 'RESTOCK_ALERT') onNavigateToProducts();
                                 },
                               ),
                             );
@@ -375,9 +501,7 @@ class _DashboardView extends StatelessWidget {
           iconTheme: IconThemeData(color: theme.colorScheme.onPrimary),
           actions: [
             TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.onPrimary,
-              ),
+              style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onPrimary),
               onPressed: onLanguageToggle,
               icon: const Icon(Icons.translate, size: 16),
               label: Text(
@@ -385,61 +509,41 @@ class _DashboardView extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ),
-
-            if (currentUser != null)
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("chats")
-                    .doc(currentUser.uid)
-                    .collection("messages")
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  return IconButton(
-                    icon: Icon(
-                      Icons.mail_outline,
-                      color: theme.colorScheme.onPrimary,
-                    ),
-                    tooltip: "Messages",
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const MessagesPage(),
-                        ),
-                      );
-                    },
+            if (currentUser != null) ...[
+              IconButton(
+                icon: Icon(Icons.mail_outline, color: theme.colorScheme.onPrimary),
+                tooltip: "Messages",
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MessagesPage()),
                   );
                 },
               ),
-
-            Padding(
-              padding: const EdgeInsets.only(right: 12.0),
-              child: currentUser == null
-                  ? const SizedBox.shrink()
-                  : StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(currentUser.uid)
-                    .collection('notifications')
-                    .where('isRead', isEqualTo: false)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                  return IconButton(
-                    icon: Badge(
-                      label: Text(
-                        "$unreadCount",
-                        style: TextStyle(fontSize: 10, color: theme.colorScheme.onError),
+              Padding(
+                padding: const EdgeInsets.only(right: 12.0),
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(currentUser.uid)
+                      .collection('notifications')
+                      .where('isRead', isEqualTo: false)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                    return IconButton(
+                      icon: Badge(
+                        label: Text("$unreadCount", style: TextStyle(fontSize: 10, color: theme.colorScheme.onError)),
+                        backgroundColor: theme.colorScheme.error,
+                        isLabelVisible: unreadCount > 0,
+                        child: Icon(Icons.notifications_none_outlined, color: theme.colorScheme.onPrimary),
                       ),
-                      backgroundColor: theme.colorScheme.error,
-                      isLabelVisible: unreadCount > 0,
-                      child: Icon(Icons.notifications_none_outlined, color: theme.colorScheme.onPrimary),
-                    ),
-                    onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
-                  );
-                },
+                      onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
+                    );
+                  },
+                ),
               ),
-            ),
+            ],
           ],
           flexibleSpace: FlexibleSpaceBar(
             background: Container(
@@ -517,11 +621,11 @@ class _DashboardView extends StatelessWidget {
             child: currentUser == null
                 ? const SizedBox.shrink()
                 : _DashboardCardGrid(
-              userId: currentUser.uid,
-              local: local,
-              onOrdersTap: onNavigateToOrders,
-              onCartTap: onNavigateToCart,
-            ),
+                    userId: currentUser.uid,
+                    local: local,
+                    onOrdersTap: onNavigateToOrders,
+                    onCartTap: onNavigateToCart,
+                  ),
           ),
         ),
 
@@ -597,7 +701,6 @@ class _DashboardView extends StatelessWidget {
           ),
         ),
 
-        // 🔥 PINAKAMABENTA & 👍 REKOMENDADO SECTIONS
         SliverToBoxAdapter(
           child: _HorizontalProductSection(
             local: local,
@@ -713,7 +816,6 @@ class _DashboardCardGrid extends StatelessWidget {
   }
 }
 
-// 🌾 UPDATED & DYNAMIC PRODUCT SECTION
 class _HorizontalProductSection extends StatelessWidget {
   final AppLocalizations local;
   final String title;
@@ -818,13 +920,13 @@ class _HorizontalProductSection extends StatelessWidget {
                               ),
                               child: imageUrl != null && imageUrl.isNotEmpty
                                   ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Icon(Icons.grain, color: theme.colorScheme.secondary, size: 28),
-                                ),
-                              )
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        imageUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => Icon(Icons.grain, color: theme.colorScheme.secondary, size: 28),
+                                      ),
+                                    )
                                   : Icon(Icons.grain, color: theme.colorScheme.secondary, size: 28),
                             ),
                             const Spacer(),

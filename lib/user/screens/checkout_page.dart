@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'homeuser_page.dart';
-import 'address_picker.dart';
+import 'address_picker.dart'; 
 import 'payment_webview.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -32,10 +32,182 @@ class _CheckoutPageState extends State<CheckoutPage> {
   String paymentMethod = "Cash on Delivery (COD)";
   bool isPlacingOrder = false;
 
+  double distanceInKm = 0.0;
+  double shippingFee = 0.0;
+  bool isCalculatingShipping = false;
+
+  // Main Store Coordinates (Default: San Jose del Monte)
+  final Map<String, dynamic> storeLocation = {
+    'storeName': 'Main Warehouse',
+    'latitude': 14.8138, 
+    'longitude': 121.0453,
+  };
+
+  final TextEditingController _voucherController = TextEditingController();
+  double voucherDiscount = 0.0;
+  String? appliedVoucherCode;
+  bool isApplyingVoucher = false;
+
+  int completedOrderCount = 0;
+  double loyaltyDiscount = 0.0;
+
   @override
   void initState() {
     super.initState();
-    _loadDefaultAddress();
+    if (widget.initialAddress != null) {
+      selectedAddress = widget.initialAddress;
+      _updateDistanceAndShippingFee();
+    } else {
+      _loadDefaultAddress();
+    }
+    _checkCustomerLoyalty();
+  }
+
+  double get totalPalayKg {
+    double total = 0.0;
+    for (var item in widget.orderItems) {
+      final qty = (item['quantity'] as num? ?? 1).toDouble();
+      total += qty;
+    }
+    return total;
+  }
+
+  /// Dynamic Shipping Calculation
+  Future<void> _updateDistanceAndShippingFee() async {
+    if (selectedAddress == null) return;
+
+    setState(() => isCalculatingShipping = true);
+
+    try {
+      final summary = await DistanceService.computeDeliverySummary(
+        storeData: storeLocation,
+        userAddress: selectedAddress!,
+      );
+
+      double calculatedKm = (summary['distanceKm'] as num).toDouble();
+      
+      // Affordable Shipping Rates:
+      double baseFare = 40.0;      // ₱40 base fee
+      double ratePerKm = 5.0;      // ₱5/km
+      double ratePerKg = 0.50;     // ₱0.50 kada kilo ng palay
+
+      double calculatedShipping = baseFare + (calculatedKm * ratePerKm) + (totalPalayKg * ratePerKg);
+
+      // MAXIMUM SHIPPING FEE CAP: Limitado sa maximum na ₱300 para abot-kaya
+      const double maxShippingFee = 300.0;
+      if (calculatedShipping > maxShippingFee) {
+        calculatedShipping = maxShippingFee;
+      }
+
+      if (mounted) {
+        setState(() {
+          distanceInKm = calculatedKm;
+          shippingFee = calculatedShipping;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error updating shipping fee: $e");
+    } finally {
+      if (mounted) setState(() => isCalculatingShipping = false);
+    }
+  }
+
+  Future<void> _checkCustomerLoyalty() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection("orders")
+        .where("userId", isEqualTo: user.uid)
+        .where("orderStatus", isEqualTo: "Completed")
+        .get();
+
+    if (mounted) {
+      setState(() {
+        completedOrderCount = snapshot.docs.length;
+        if (completedOrderCount >= 3) {
+          loyaltyDiscount = widget.totalAmount * 0.05;
+        } else {
+          loyaltyDiscount = 0.0;
+        }
+      });
+    }
+  }
+
+  Future<void> _applyVoucher() async {
+    final code = _voucherController.text.trim();
+    if (code.isEmpty) return;
+
+    setState(() => isApplyingVoucher = true);
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('vouchers')
+          .where('code', isEqualTo: code)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Hindi valid o expired na ang voucher code.")),
+          );
+        }
+        return;
+      }
+
+      final voucherData = snapshot.docs.first.data();
+      final double discountVal = (voucherData['discountValue'] ?? 0).toDouble();
+      final String discountType = voucherData['discountType'] ?? 'fixed';
+      final double minSpend = (voucherData['minSpend'] ?? 0).toDouble();
+
+      if (widget.totalAmount < minSpend) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Kailangan ng minimum spend na ₱$minSpend para sa voucher na ito.")),
+          );
+        }
+        return;
+      }
+
+      double calculated = 0.0;
+      if (discountType == 'percentage') {
+        calculated = widget.totalAmount * (discountVal / 100);
+      } else {
+        calculated = discountVal;
+      }
+
+      setState(() {
+        voucherDiscount = calculated;
+        appliedVoucherCode = code;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Voucher applied! Nakatipid ka ng ₱${calculated.toStringAsFixed(2)}"),
+            backgroundColor: Theme.of(context).primaryColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error sa voucher: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isApplyingVoucher = false);
+    }
+  }
+
+  double get totalDiscount => loyaltyDiscount + voucherDiscount;
+
+  double get finalTotal {
+    double itemTotalAfterDiscount = widget.totalAmount - totalDiscount;
+    if (itemTotalAfterDiscount < 0) itemTotalAfterDiscount = 0.0;
+    return itemTotalAfterDiscount + shippingFee;
   }
 
   Future<void> _loadDefaultAddress() async {
@@ -54,6 +226,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       setState(() {
         selectedAddress = snapshot.docs.first.data();
       });
+      _updateDistanceAndShippingFee();
     }
   }
 
@@ -62,12 +235,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     for (final item in widget.orderItems) {
       final productId = item['productId'];
-      final quantityOrdered = item['quantity'] as int? ?? 1;
+      final quantityOrdered = item['quantity'] as num? ?? 1;
 
       if (productId != null && productId.toString().isNotEmpty) {
         final productRef = FirebaseFirestore.instance.collection('products').doc(productId);
         batch.update(productRef, {
-          'stock': FieldValue.increment(-quantityOrdered)
+          'totalKg': FieldValue.increment(-quantityOrdered)
         });
       }
     }
@@ -75,13 +248,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
     await batch.commit();
   }
 
+  Future<void> _removePurchasedItemsFromCart() async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final item in widget.orderItems) {
+      if (item['cartDocId'] != null) {
+        final docRef = FirebaseFirestore.instance.collection('cart').doc(item['cartDocId']);
+        batch.delete(docRef);
+      }
+    }
+
+    await batch.commit();
+  }
+
   Future<void> _processOnlinePayment(
-    DocumentReference orderRef,
-    String methodKey,
-    String customerName,
-    String customerEmail,
-    String customerPhone,
-  ) async {
+      DocumentReference orderRef,
+      String methodKey,
+      String customerName,
+      String customerEmail,
+      String customerPhone,
+      ) async {
     final primaryColor = Theme.of(context).primaryColor;
     final errorColor = Theme.of(context).colorScheme.error;
 
@@ -112,7 +298,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "orderId": orderRef.id,
-          "amount": widget.totalAmount,
+          "amount": finalTotal,
           "paymentMethod": methodKey,
           "customerName": customerName,
           "customerEmail": customerEmail,
@@ -149,9 +335,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
 
         if (mounted && result == "SUCCESS") {
-          await _deductProductStock();
-          await _removePurchasedItemsFromCart();
-
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text("Payment Successful! Your payment and order have been received."),
@@ -162,7 +345,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             MaterialPageRoute(
               builder: (_) => const HomeUserPage(initialIndex: 3),
             ),
-            (route) => false,
+                (route) => false,
           );
         } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -192,19 +375,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  Future<void> _removePurchasedItemsFromCart() async {
-    final batch = FirebaseFirestore.instance.batch();
-
-    for (final item in widget.orderItems) {
-      if (item['cartDocId'] != null) {
-        final docRef = FirebaseFirestore.instance.collection('cart').doc(item['cartDocId']);
-        batch.delete(docRef);
-      }
-    }
-
-    await batch.commit();
-  }
-
   void _placeOrder() async {
     final errorColor = Theme.of(context).colorScheme.error;
     final primaryColor = Theme.of(context).primaryColor;
@@ -226,25 +396,38 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final String contactNum = selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? "N/A";
       final String customerName = selectedAddress!['fullName'] ?? 'Customer';
 
-      // 1. Create Order Document sa Firestore
       final orderRef = await FirebaseFirestore.instance.collection("orders").add({
         "userId": user.uid,
         "customerName": customerName,
         "emailAddress": selectedAddress!['emailAddress'],
         "phoneNumber": contactNum,
         "deliveryAddress": "${selectedAddress!['streetBuildingHouseNo']}, ${selectedAddress!['barangay']}, ${selectedAddress!['cityMunicipality']}, ${selectedAddress!['province']} (${selectedAddress!['postalCode'] ?? ''})",
+        "deliveryCoordinates": {
+          "latitude": selectedAddress!['latitude'] ?? storeLocation['latitude'],
+          "longitude": selectedAddress!['longitude'] ?? storeLocation['longitude'],
+        },
+        "distanceKm": distanceInKm,
         "items": widget.orderItems,
-        "totalAmount": widget.totalAmount,
+        "subtotal": widget.totalAmount,
+        "shippingFee": shippingFee,
+        "discountAmount": totalDiscount,
+        "loyaltyDiscount": loyaltyDiscount,
+        "voucherDiscount": voucherDiscount,
+        "voucherCode": appliedVoucherCode ?? "",
+        "totalAmount": finalTotal,
+        "totalPalayKg": totalPalayKg,
         "paymentMethod": paymentMethod,
         "isPaid": false,
         "orderStatus": isOnlinePayment ? "Unpaid" : "Pending",
         "createdAt": FieldValue.serverTimestamp(),
       });
 
-      final shortOrderId = orderRef.id.substring(0, 6);
-      final formattedAmount = "₱${widget.totalAmount.toStringAsFixed(2)}";
+      await _deductProductStock();
+      await _removePurchasedItemsFromCart();
 
-      // 2. NOTIFICATION PARA SA CUSTOMER (Buyer App)
+      final shortOrderId = orderRef.id.substring(0, 6);
+      final formattedAmount = "₱${finalTotal.toStringAsFixed(2)}";
+
       await FirebaseFirestore.instance.collection("notifications").add({
         "userId": user.uid,
         "recipientType": "customer",
@@ -256,25 +439,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "timestamp": FieldValue.serverTimestamp(),
       });
 
-      // 3. NOTIFICATION PARA SA ADMIN / SELLER (Admin App)
       await FirebaseFirestore.instance.collection("notifications").add({
         "recipientType": "admin",
         "title": "New Order Alert! (#$shortOrderId)",
-        "body": "New order received from $customerName worth $formattedAmount via $paymentMethod. Please process for fulfillment.",
+        "body": "New order received from $customerName worth $formattedAmount via $paymentMethod.",
         "type": "order",
         "orderId": orderRef.id,
         "isRead": false,
         "timestamp": FieldValue.serverTimestamp(),
       });
 
-      // 4. System Push Banner
       await NotificationService.showNotification(
         title: "New Order Alert! (#$shortOrderId)",
         body: "New order received from $customerName worth $formattedAmount.",
         channelId: NotificationService.channelOrders,
       );
 
-      // 5. Payment Routing
       if (isOnlinePayment) {
         if (mounted) setState(() => isPlacingOrder = false);
         await _processOnlinePayment(
@@ -285,27 +465,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
           contactNum,
         );
       } else {
-        await _deductProductStock();
-        await _removePurchasedItemsFromCart();
-
         if (mounted) {
           showDialog(
             context: context,
             barrierDismissible: false,
             builder: (context) => AlertDialog(
               title: const Text("Order Placed Successfully!"),
-              content: const Text("Thank you! We have received your order and are preparing it for delivery."),
+              content: const Text("Salamat! Natanggap na namin ang iyong order para sa kargamento ng palay."),
               actions: [
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
                   onPressed: () {
                     Navigator.pop(context);
-                    // FIXED: Inilipat pabalik sa HomeUserPage na may index 3 (Orders Tab)
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(
                         builder: (_) => const HomeUserPage(initialIndex: 3),
                       ),
-                      (route) => false,
+                          (route) => false,
                     );
                   },
                   child: const Text("OK", style: TextStyle(color: Colors.white)),
@@ -365,7 +541,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             GlobalAddressSelectionService.showAddressPicker(
                               context: context,
                               onAddressSelected: (newAddress) {
-                                setState(() => selectedAddress = newAddress);
+                                setState(() {
+                                  selectedAddress = newAddress;
+                                });
+                                _updateDistanceAndShippingFee();
                               },
                             );
                           },
@@ -397,6 +576,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
             ),
             const SizedBox(height: 16),
+
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -432,6 +612,97 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
             ),
             const SizedBox(height: 16),
+
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.confirmation_number_outlined, color: primaryColor),
+                        const SizedBox(width: 8),
+                        const Text("Vouchers & Diskwento", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    const Divider(),
+
+                    if (completedOrderCount >= 3) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.stars, color: Colors.green),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Suki Customer Perk: May 5% Loyalty Discount ka dahil sa iyong $completedOrderCount completed orders!",
+                                style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _voucherController,
+                            decoration: const InputDecoration(
+                              hintText: "Enter Voucher Code (e.g. PALAY100)",
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                          onPressed: isApplyingVoucher ? null : _applyVoucher,
+                          child: isApplyingVoucher
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text("Apply", style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                    if (appliedVoucherCode != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                          const SizedBox(width: 4),
+                          Text("Voucher '$appliedVoucherCode' applied!", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                appliedVoucherCode = null;
+                                voucherDiscount = 0.0;
+                                _voucherController.clear();
+                              });
+                            },
+                            child: const Text("Remove", style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -447,8 +718,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text("${item['quantity']}x ${item['name']}"),
-                          Text("₱${item['price'] * item['quantity']}"),
+                          Text("${item['quantity']} kg x ${item['name']}"),
+                          Text("₱${((item['price'] as num) * (item['quantity'] as num)).toStringAsFixed(2)}"),
                         ],
                       ),
                     )),
@@ -456,8 +727,55 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Total Amount:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                        Text("₱${widget.totalAmount.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor)),
+                        const Text("Subtotal (Palay):"),
+                        Text("₱${widget.totalAmount.toStringAsFixed(2)}"),
+                      ],
+                    ),
+                    if (loyaltyDiscount > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Suki Loyalty Discount (5%):", style: TextStyle(color: Colors.green)),
+                          Text("-₱${loyaltyDiscount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ],
+                    if (voucherDiscount > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Voucher Discount:", style: TextStyle(color: Colors.green)),
+                          Text("-₱${voucherDiscount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Shipping Fee (${totalPalayKg.toStringAsFixed(0)} kg palay • ${distanceInKm.toStringAsFixed(1)} km):",
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        isCalculatingShipping
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green),
+                              )
+                            : Text("₱${shippingFee.toStringAsFixed(2)}"),
+                      ],
+                    ),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Kabuuang Babayaran:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        Text("₱${finalTotal.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor)),
                       ],
                     )
                   ],
@@ -474,13 +792,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
           height: 50,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            onPressed: isPlacingOrder ? null : _placeOrder,
+            onPressed: (isPlacingOrder || isCalculatingShipping) ? null : _placeOrder,
             child: isPlacingOrder
                 ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
-                    paymentMethod == "GCash / E-Wallet" ? "PAY VIA GCASH" : "PLACE ORDER NOW",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
+              paymentMethod == "GCash / E-Wallet" ? "PAY VIA GCASH" : "PLACE ORDER NOW",
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
           ),
         ),
       ),
