@@ -72,7 +72,7 @@ class _RegisterUserPageState
       'lastNameHint': 'Enter your last name',
       'firstName': 'First Name',
       'firstNameHint': 'Enter your first name',
-      'middleInitial': 'Middle Initial',
+      'middleInitial': 'Middle Initial (Optional)',
       'middleInitialHint': 'Example: A.',
       'email': 'Email Address',
       'emailHint': 'Example: juan@gmail.com',
@@ -106,7 +106,7 @@ You agree not to submit false identification details, disrupt platform security,
       'valLastName': 'Enter your last name',
       'valFirstName': 'Enter your first name',
       'valMiddleInitial':
-      'Enter one middle initial',
+      'Enter a valid middle initial',
       'valEmail': 'Enter a valid email address',
       'valPassword': 'Do not leave password blank',
       'valConfirm': 'Passwords do not match',
@@ -127,7 +127,7 @@ You agree not to submit false identification details, disrupt platform security,
       'lastNameHint': 'Ilagay ang iyong apelyido',
       'firstName': 'Pangalan',
       'firstNameHint': 'Ilagay ang iyong pangalan',
-      'middleInitial': 'Middle Initial',
+      'middleInitial': 'Middle Initial (Opsyonal)',
       'middleInitialHint': 'Halimbawa: A.',
       'email': 'Email Address',
       'emailHint': 'Halimbawa: juan@gmail.com',
@@ -161,7 +161,7 @@ Bawal ang paglalagay ng pekeng impormasyon, pagsubok na sirain ang seguridad ng 
       'valLastName': 'Ilagay ang iyong apelyido',
       'valFirstName': 'Ilagay ang iyong pangalan',
       'valMiddleInitial':
-      'Ilagay ang isang middle initial',
+      'Maglagay ng tamang middle initial',
       'valEmail': 'Gumamit ng tamang email format',
       'valPassword':
       'Huwag iwanang blangko ang password',
@@ -227,6 +227,10 @@ Bawal ang paglalagay ng pekeng impormasyon, pagsubok na sirain ang seguridad ng 
       String input) {
     String value =
     _cleanInput(input);
+
+    if (value.isEmpty) {
+      return '';
+    }
 
     if (value.endsWith('.')) {
       value =
@@ -812,7 +816,7 @@ Bawal ang paglalagay ng pekeng impormasyon, pagsubok na sirain ang seguridad ng 
                       },
                     ),
 
-                    // MIDDLE INITIAL
+                    // MIDDLE INITIAL (OPSYONAL)
                     _buildInputField(
                       controller:
                       _middleInitialController,
@@ -830,8 +834,7 @@ Bawal ang paglalagay ng pekeng impormasyon, pagsubok na sirain ang seguridad ng 
                         if (v == null ||
                             v.trim()
                                 .isEmpty) {
-                          return txt[
-                          'valMiddleInitial'];
+                          return null;
                         }
 
                         final value =
