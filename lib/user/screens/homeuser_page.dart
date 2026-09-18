@@ -55,12 +55,9 @@ class _HomeUserPageState extends State<HomeUserPage> {
         .listen((snapshot) async {
       if (!mounted) return;
 
-      // Kapag nabura na nang tuluyan ang document sa Firestore (Admin o Scheduled Deletion)
+      // Kung bagong gawa lang ang account at hindi pa ganap na naikakarga ang firestore doc
       if (!snapshot.exists || snapshot.data() == null) {
-        await _forceLogout(
-          title: 'Account Deleted',
-          message: 'Ang iyong account ay nabura na.',
-        );
+        // Huwag agad i-force logout kung bagong register ang user
         return;
       }
 
@@ -91,7 +88,7 @@ class _HomeUserPageState extends State<HomeUserPage> {
         _hasShownDeletionDialog = false;
       }
     }, onError: (_) {
-      // Safety catch para sa stream error kapag biglang nawalan ng permission (e.g. deleted account rules)
+      // Safety catch para sa stream error
       _navigateToLogin();
     });
   }
@@ -120,7 +117,6 @@ class _HomeUserPageState extends State<HomeUserPage> {
           style: TextStyle(fontSize: 13),
         ),
         actions: [
-          // KANSELIN / ISARA: Mag-log out at bumalik sa Login Page
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
@@ -130,7 +126,6 @@ class _HomeUserPageState extends State<HomeUserPage> {
             },
             child: const Text('Kanselahin (Mag-logout)', style: TextStyle(color: Colors.grey)),
           ),
-          // MAGPATULOY: Ibabawi ang deletion at papasok sa Home User
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E7D32),
@@ -238,7 +233,6 @@ class _HomeUserPageState extends State<HomeUserPage> {
       backgroundColor: theme.colorScheme.surfaceContainerLowest,
       body: Column(
         children: [
-          // Deletion Warning Banner
           if (_isPendingDeletion && currentUser != null)
             Material(
               color: Colors.orange.shade800,
