@@ -1,14 +1,15 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'homeuser_page.dart';
-import 'address_picker.dart'; 
-import 'payment_webview.dart';
-import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'orders_page.dart';
+
+import 'homeuser_page.dart';
+import 'payment_webview.dart';
+import 'address_picker.dart'; 
 import 'package:arroz_app/services/notification/notification_service.dart';
 
 class CheckoutPage extends StatefulWidget {
@@ -36,7 +37,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   double shippingFee = 0.0;
   bool isCalculatingShipping = false;
 
-  // Main Store Coordinates (Default: San Jose del Monte)
+  // Main Store Coordinates (San Jose del Monte)
   final Map<String, dynamic> storeLocation = {
     'storeName': 'Main Warehouse',
     'latitude': 14.8138, 
@@ -63,6 +64,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _checkCustomerLoyalty();
   }
 
+  @override
+  void dispose() {
+    _voucherController.dispose();
+    super.dispose();
+  }
+
   double get totalPalayKg {
     double total = 0.0;
     for (var item in widget.orderItems) {
@@ -72,6 +79,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
     return total;
   }
 
+  /// Haversine Formula para sa eksaktong pagkalkula ng distansya (in KM)
+  double _calculateHaversineDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double p = 0.017453292519943295; // Math.PI / 180
+    final double a = 0.5 -
+        cos((lat2 - lat1) * p) / 2 +
+        cos(lat1 * p) * cos(lat2 * p) * (1 - cos((lon2 - lon1) * p)) / 2;
+    return 12742 * asin(sqrt(a)); // 2 * R * asin... (R = 6371 km)
+  }
+
   /// Dynamic Shipping Calculation
   Future<void> _updateDistanceAndShippingFee() async {
     if (selectedAddress == null) return;
@@ -79,21 +95,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
     setState(() => isCalculatingShipping = true);
 
     try {
-      final summary = await DistanceService.computeDeliverySummary(
-        storeData: storeLocation,
-        userAddress: selectedAddress!,
+      double userLat = (selectedAddress!['latitude'] as num?)?.toDouble() ?? storeLocation['latitude'];
+      double userLon = (selectedAddress!['longitude'] as num?)?.toDouble() ?? storeLocation['longitude'];
+
+      double calculatedKm = _calculateHaversineDistance(
+        storeLocation['latitude'],
+        storeLocation['longitude'],
+        userLat,
+        userLon,
       );
 
-      double calculatedKm = (summary['distanceKm'] as num).toDouble();
-      
-      // Affordable Shipping Rates:
-      double baseFare = 40.0;      // ₱40 base fee
-      double ratePerKm = 5.0;      // ₱5/km
-      double ratePerKg = 0.50;     // ₱0.50 kada kilo ng palay
+      if (calculatedKm < 1.0) calculatedKm = 1.0;
+
+      double baseFare = 40.0;      
+      double ratePerKm = 5.0;      
+      double ratePerKg = 0.50;     
 
       double calculatedShipping = baseFare + (calculatedKm * ratePerKm) + (totalPalayKg * ratePerKg);
 
-      // MAXIMUM SHIPPING FEE CAP: Limitado sa maximum na ₱300 para abot-kaya
       const double maxShippingFee = 300.0;
       if (calculatedShipping > maxShippingFee) {
         calculatedShipping = maxShippingFee;
@@ -116,21 +135,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final snapshot = await FirebaseFirestore.instance
-        .collection("orders")
-        .where("userId", isEqualTo: user.uid)
-        .where("orderStatus", isEqualTo: "Completed")
-        .get();
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection("orders")
+          .where("userId", isEqualTo: user.uid)
+          .where("orderStatus", isEqualTo: "Completed")
+          .get();
 
-    if (mounted) {
-      setState(() {
-        completedOrderCount = snapshot.docs.length;
-        if (completedOrderCount >= 3) {
-          loyaltyDiscount = widget.totalAmount * 0.05;
-        } else {
-          loyaltyDiscount = 0.0;
-        }
-      });
+      if (mounted) {
+        setState(() {
+          completedOrderCount = snapshot.docs.length;
+          if (completedOrderCount >= 3) {
+            loyaltyDiscount = widget.totalAmount * 0.05; // 5% Discount
+          } else {
+            loyaltyDiscount = 0.0;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Loyalty Check Error: $e");
     }
   }
 
@@ -194,7 +217,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error sa voucher: $e")),
+          SnackBar(content: SelectableText("Error sa voucher: $e")),
         );
       }
     } finally {
@@ -214,51 +237,111 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final snapshot = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(user.uid)
-        .collection("addresses")
-        .where("isDefault", isEqualTo: true)
-        .limit(1)
-        .get();
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .collection("addresses")
+          .where("isDefault", isEqualTo: true)
+          .limit(1)
+          .get();
 
-    if (snapshot.docs.isNotEmpty) {
-      setState(() {
-        selectedAddress = snapshot.docs.first.data();
-      });
-      _updateDistanceAndShippingFee();
+      if (snapshot.docs.isNotEmpty) {
+        setState(() {
+          selectedAddress = snapshot.docs.first.data();
+        });
+        _updateDistanceAndShippingFee();
+      }
+    } catch (e) {
+      debugPrint("Error loading default address: $e");
     }
   }
 
+  /// INAYOS NA STOCK DEDUCTION METHOD PARA SA ADMIN INVENTORY
   Future<void> _deductProductStock() async {
-    final batch = FirebaseFirestore.instance.batch();
+    final db = FirebaseFirestore.instance;
 
     for (final item in widget.orderItems) {
-      final productId = item['productId'];
-      final quantityOrdered = item['quantity'] as num? ?? 1;
+      debugPrint("🔍 CHECKING ORDER ITEM: $item");
 
-      if (productId != null && productId.toString().isNotEmpty) {
-        final productRef = FirebaseFirestore.instance.collection('products').doc(productId);
-        batch.update(productRef, {
-          'totalKg': FieldValue.increment(-quantityOrdered)
-        });
+      final String? productId = item['productId']?.toString() ?? 
+                                 item['id']?.toString() ?? 
+                                 item['docId']?.toString();
+                                 
+      final double quantityOrdered = ((item['quantity'] as num?) ?? 1).toDouble();
+      final String? selectedCondition = item['condition']?.toString();
+
+      if (productId != null && productId.trim().isNotEmpty) {
+        try {
+          await db.runTransaction((transaction) async {
+            final productRef = db.collection('products').doc(productId.trim());
+            final snapshot = await transaction.get(productRef);
+
+            if (!snapshot.exists) {
+              debugPrint("❌ Product doc not found: $productId");
+              return;
+            }
+
+            final data = snapshot.data() as Map<String, dynamic>;
+            double currentRemaining = ((data['remainingKg'] ?? 0.0) as num).toDouble();
+            List<dynamic> breakdowns = List.from(data['breakdowns'] ?? []);
+
+            if (selectedCondition != null && selectedCondition.isNotEmpty) {
+              for (int i = 0; i < breakdowns.length; i++) {
+                if (breakdowns[i]['condition'] == selectedCondition) {
+                  double currentKg = ((breakdowns[i]['kg'] ?? 0.0) as num).toDouble();
+                  double newKg = currentKg - quantityOrdered;
+                  breakdowns[i]['kg'] = newKg < 0 ? 0.0 : newKg;
+                  break;
+                }
+              }
+            } else if (breakdowns.isNotEmpty) {
+              double currentKg = ((breakdowns[0]['kg'] ?? 0.0) as num).toDouble();
+              double newKg = currentKg - quantityOrdered;
+              breakdowns[0]['kg'] = newKg < 0 ? 0.0 : newKg;
+            }
+
+            double newRemaining = currentRemaining - quantityOrdered;
+            if (newRemaining < 0) newRemaining = 0.0;
+
+            transaction.update(productRef, {
+              'remainingKg': newRemaining,
+              'totalKg': newRemaining,
+              'breakdowns': breakdowns,
+            });
+
+            debugPrint("✅ STOCK DEDUCTED: -$quantityOrdered kg para sa Product: $productId");
+          });
+        } catch (e) {
+          debugPrint("❌ Transaction Error sa Stock Deduction: $e");
+          rethrow; // Re-throw para makita sa main catch block ng _placeOrder
+        }
+      } else {
+        debugPrint("⚠️ WARNING: Walang Product ID sa item $item");
       }
     }
-
-    await batch.commit();
   }
 
   Future<void> _removePurchasedItemsFromCart() async {
-    final batch = FirebaseFirestore.instance.batch();
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      bool hasCartItems = false;
 
-    for (final item in widget.orderItems) {
-      if (item['cartDocId'] != null) {
-        final docRef = FirebaseFirestore.instance.collection('cart').doc(item['cartDocId']);
-        batch.delete(docRef);
+      for (final item in widget.orderItems) {
+        if (item['cartDocId'] != null) {
+          final docRef = FirebaseFirestore.instance.collection('cart').doc(item['cartDocId']);
+          batch.delete(docRef);
+          hasCartItems = true;
+        }
       }
-    }
 
-    await batch.commit();
+      if (hasCartItems) {
+        await batch.commit();
+        debugPrint("✅ Cart items successfully removed.");
+      }
+    } catch (e) {
+      debugPrint("Error removing cart items: $e");
+    }
   }
 
   Future<void> _processOnlinePayment(
@@ -293,6 +376,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
 
     try {
+      // Dinagdagan ng timeout duration na 60 seconds para sa cold-start ng Render Backend
       final response = await http.post(
         Uri.parse("https://arroz-backend.onrender.com/api/create-payment"),
         headers: {"Content-Type": "application/json"},
@@ -304,7 +388,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           "customerEmail": customerEmail,
           "customerPhone": customerPhone,
         }),
-      );
+      ).timeout(const Duration(seconds: 60));
 
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
 
@@ -335,6 +419,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
 
         if (mounted && result == "SUCCESS") {
+          await _deductProductStock();
+          await _removePurchasedItemsFromCart();
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text("Payment Successful! Your payment and order have been received."),
@@ -359,8 +446,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Online payment session failed (${response.statusCode})."),
+              content: SelectableText("Online payment session failed (${response.statusCode}): ${response.body}"),
               backgroundColor: errorColor,
+              duration: const Duration(seconds: 10),
             ),
           );
         }
@@ -369,7 +457,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Payment Gateway Error: $e"), backgroundColor: errorColor),
+          SnackBar(
+            content: SelectableText("Payment Gateway Error: $e"),
+            backgroundColor: errorColor,
+            duration: const Duration(seconds: 10),
+          ),
         );
       }
     }
@@ -390,16 +482,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        throw Exception("User is not authenticated. Please log in again.");
+      }
 
       final bool isOnlinePayment = paymentMethod == "GCash / E-Wallet";
       final String contactNum = selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? "N/A";
       final String customerName = selectedAddress!['fullName'] ?? 'Customer';
 
+      // Kunin ang pinaka-latest na admin delivery notice bago i-save ang order.
+      final noticeSnapshot = await FirebaseFirestore.instance
+          .collection("app_settings")
+          .doc("delivery_notice")
+          .get();
+      final noticeData = noticeSnapshot.data() ?? {};
+      final bool deliveryDelayEnabled = noticeData['enabled'] == true;
+
       final orderRef = await FirebaseFirestore.instance.collection("orders").add({
         "userId": user.uid,
         "customerName": customerName,
-        "emailAddress": selectedAddress!['emailAddress'],
+        "emailAddress": selectedAddress!['emailAddress'] ?? user.email ?? "",
         "phoneNumber": contactNum,
         "deliveryAddress": "${selectedAddress!['streetBuildingHouseNo']}, ${selectedAddress!['barangay']}, ${selectedAddress!['cityMunicipality']}, ${selectedAddress!['province']} (${selectedAddress!['postalCode'] ?? ''})",
         "deliveryCoordinates": {
@@ -417,15 +519,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "totalAmount": finalTotal,
         "totalPalayKg": totalPalayKg,
         "paymentMethod": paymentMethod,
+        "deliveryDelay": deliveryDelayEnabled,
+        "deliveryDelayTitle": deliveryDelayEnabled ? (noticeData['title'] ?? 'Delivery Delay Notice') : null,
+        "deliveryDelayMessage": deliveryDelayEnabled ? (noticeData['message'] ?? '') : null,
+        "deliveryDelayDays": deliveryDelayEnabled ? (noticeData['estimatedDelay'] ?? '') : null,
+        "deliveryDelayReason": deliveryDelayEnabled ? (noticeData['reason'] ?? '') : null,
         "isPaid": false,
         "orderStatus": isOnlinePayment ? "Unpaid" : "Pending",
         "createdAt": FieldValue.serverTimestamp(),
       });
 
-      await _deductProductStock();
-      await _removePurchasedItemsFromCart();
+      if (!isOnlinePayment) {
+        await _deductProductStock();
+        await _removePurchasedItemsFromCart();
+      }
 
-      final shortOrderId = orderRef.id.substring(0, 6);
+      final shortOrderId = orderRef.id.length >= 6 ? orderRef.id.substring(0, 6) : orderRef.id;
       final formattedAmount = "₱${finalTotal.toStringAsFixed(2)}";
 
       await FirebaseFirestore.instance.collection("notifications").add({
@@ -491,15 +600,82 @@ class _CheckoutPageState extends State<CheckoutPage> {
           );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint("❌ DETAILED ORDER ERROR: $e");
+      debugPrint("❌ STACK TRACE: $stackTrace");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error placing order: $e"), backgroundColor: errorColor),
+          SnackBar(
+            content: SelectableText("Error placing order: $e"),
+            backgroundColor: errorColor,
+            duration: const Duration(seconds: 15),
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => isPlacingOrder = false);
     }
+  }
+
+  Widget _buildDeliveryDelayBanner(Map<String, dynamic> data) {
+    final title = (data['title'] ?? 'Delivery Delay Notice').toString();
+    final message = (data['message'] ?? 'Maaaring magkaroon ng delay sa delivery dahil sa masamang panahon.').toString();
+    final delay = (data['estimatedDelay'] ?? '').toString();
+    final reason = (data['reason'] ?? '').toString();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 28),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900, fontSize: 15)),
+                const SizedBox(height: 4),
+                Text(message, style: TextStyle(color: Colors.orange.shade900, fontSize: 13)),
+                if (delay.isNotEmpty || reason.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (delay.isNotEmpty) _noticeChip(Icons.schedule, 'Expected delay: $delay'),
+                      if (reason.isNotEmpty) _noticeChip(Icons.info_outline, reason),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noticeChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.orange.shade900),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(fontSize: 11, color: Colors.orange.shade900, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -518,6 +694,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection("app_settings")
+                  .doc("delivery_notice")
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final data = snapshot.data?.data();
+                if (data == null || data['enabled'] != true) return const SizedBox.shrink();
+                return _buildDeliveryDelayBanner(data);
+              },
+            ),
+            // Address Section
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -559,7 +747,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     if (selectedAddress == null)
                       Text("No address selected. Please click '+ Select / Add' above.", style: TextStyle(color: errorColor))
                     else ...[
-                      Text("Name: ${selectedAddress!['fullName']}", style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text("Name: ${selectedAddress!['fullName'] ?? 'N/A'}", style: const TextStyle(fontWeight: FontWeight.w600)),
                       Text("Email: ${selectedAddress!['emailAddress'] ?? 'N/A'}"),
                       Text(
                         "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}",
@@ -567,7 +755,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        "${selectedAddress!['streetBuildingHouseNo']}, ${selectedAddress!['barangay']}, ${selectedAddress!['cityMunicipality']}, ${selectedAddress!['province']} (${selectedAddress!['postalCode'] ?? ''})",
+                        "${selectedAddress!['streetBuildingHouseNo'] ?? ''}, ${selectedAddress!['barangay'] ?? ''}, ${selectedAddress!['cityMunicipality'] ?? ''}, ${selectedAddress!['province'] ?? ''} (${selectedAddress!['postalCode'] ?? ''})",
                         style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                       ),
                     ]
@@ -577,6 +765,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
             const SizedBox(height: 16),
 
+            // Payment Option
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -613,6 +802,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
             const SizedBox(height: 16),
 
+            // Vouchers & Discounts
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -703,6 +893,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
             const SizedBox(height: 16),
 
+            // Order Summary
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
@@ -718,7 +909,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text("${item['quantity']} kg x ${item['name']}"),
+                          Expanded(child: Text("${item['quantity']} kg x ${item['name']}")),
                           Text("₱${((item['price'] as num) * (item['quantity'] as num)).toStringAsFixed(2)}"),
                         ],
                       ),

@@ -85,147 +85,150 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Container(
               constraints: BoxConstraints(maxWidth: screenWidth > 600 ? 480 : screenWidth * 0.9),
               padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: ArrozTheme.mintAccent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.edit_note_rounded, color: ArrozTheme.emerald, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        "I-set ang Pangalan",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Form(
-                    key: formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        const Text(
-                          "Pakilagay ang iyong buong pangalan para makilala ka ng aming riders at shop sellers.",
-                          style: TextStyle(fontSize: 12, color: ArrozTheme.textSub, height: 1.4),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: fNameController,
-                          decoration: InputDecoration(
-                            labelText: "First Name",
-                            prefixIcon: const Icon(Icons.person_outline, color: ArrozTheme.emerald),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
-                            ),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: ArrozTheme.mintAccent,
+                            shape: BoxShape.circle,
                           ),
-                          validator: (v) => v == null || v.trim().isEmpty ? "Kailangan ang First Name" : null,
+                          child: const Icon(Icons.edit_note_rounded, color: ArrozTheme.emerald, size: 22),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: TextFormField(
-                                controller: miController,
-                                maxLength: 2,
-                                decoration: InputDecoration(
-                                  labelText: "M.I.",
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
-                                  ),
-                                  counterText: "",
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 4,
-                              child: TextFormField(
-                                controller: lNameController,
-                                decoration: InputDecoration(
-                                  labelText: "Last Name",
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
-                                  ),
-                                ),
-                                validator: (v) => v == null || v.trim().isEmpty ? "Kailangan ang Last Name" : null,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(width: 12),
+                        const Text(
+                          "I-set ang Pangalan",
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: isSaving ? null : () => Navigator.pop(context),
-                        child: const Text("Kanselahin", style: TextStyle(color: ArrozTheme.textSub, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 16),
+                    Form(
+                      key: formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "Pakilagay ang iyong buong pangalan para makilala ka ng aming riders at shop sellers.",
+                            style: TextStyle(fontSize: 12, color: ArrozTheme.textSub, height: 1.4),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: fNameController,
+                            decoration: InputDecoration(
+                              labelText: "First Name",
+                              prefixIcon: const Icon(Icons.person_outline, color: ArrozTheme.emerald),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
+                              ),
+                            ),
+                            validator: (v) => v == null || v.trim().isEmpty ? "Kailangan ang First Name" : null,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: TextFormField(
+                                  controller: miController,
+                                  maxLength: 2,
+                                  decoration: InputDecoration(
+                                    labelText: "M.I.",
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
+                                    ),
+                                    counterText: "",
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 4,
+                                child: TextFormField(
+                                  controller: lNameController,
+                                  decoration: InputDecoration(
+                                    labelText: "Last Name",
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
+                                    ),
+                                  ),
+                                  validator: (v) => v == null || v.trim().isEmpty ? "Kailangan ang Last Name" : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: ArrozTheme.emerald,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: isSaving ? null : () => Navigator.pop(context),
+                          child: const Text("Kanselahin", style: TextStyle(color: ArrozTheme.textSub, fontWeight: FontWeight.w600)),
                         ),
-                        onPressed: isSaving
-                            ? null
-                            : () async {
-                          if (formKey.currentState!.validate()) {
-                            setDialogState(() => isSaving = true);
-                            try {
-                              final String newFName = fNameController.text.trim();
-                              final String newMI = miController.text.trim();
-                              final String newLName = lNameController.text.trim();
-                              final String full = "$newFName ${newMI.isNotEmpty ? '$newMI. ' : ''}$newLName".trim();
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ArrozTheme.emerald,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                            if (formKey.currentState!.validate()) {
+                              setDialogState(() => isSaving = true);
+                              try {
+                                final String newFName = fNameController.text.trim();
+                                final String newMI = miController.text.trim();
+                                final String newLName = lNameController.text.trim();
+                                final String full = "$newFName ${newMI.isNotEmpty ? '$newMI. ' : ''}$newLName".trim();
 
-                              await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({
-                                'firstName': newFName,
-                                'middleInitial': newMI,
-                                'lastName': newLName,
-                                'name': full,
-                              });
+                                await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({
+                                  'firstName': newFName,
+                                  'middleInitial': newMI,
+                                  'lastName': newLName,
+                                  'name': full,
+                                });
 
-                              await _currentUser!.updateDisplayName(full);
+                                await _currentUser!.updateDisplayName(full);
 
-                              if (!context.mounted) return;
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Matagumpay na na-update ang pangalan!"), backgroundColor: ArrozTheme.emerald),
-                              );
-                            } catch (e) {
-                              setDialogState(() => isSaving = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Pumalya sa pag-save: $e"), backgroundColor: ArrozTheme.dangerRed),
-                              );
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Matagumpay na na-update ang pangalan!"), backgroundColor: ArrozTheme.emerald),
+                                );
+                              } catch (e) {
+                                setDialogState(() => isSaving = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Pumalya sa pag-save: $e"), backgroundColor: ArrozTheme.dangerRed),
+                                );
+                              }
                             }
-                          }
-                        },
-                        child: isSaving
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text("I-save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  )
-                ],
+                          },
+                          child: isSaving
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text("I-save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
               ),
             ),
           );
@@ -251,105 +254,107 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Container(
               constraints: BoxConstraints(maxWidth: screenWidth > 600 ? 450 : screenWidth * 0.9),
               padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: ArrozTheme.mintAccent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.phone_android_rounded, color: ArrozTheme.emerald, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text("Phone Number", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Form(
-                    key: formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        const Text(
-                          "Pakilagay ang iyong updated na mobile number para makontak ka ng aming riders.",
-                          style: TextStyle(fontSize: 12, color: ArrozTheme.textSub, height: 1.4),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: phoneController,
-                          keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(
-                            labelText: "Mobile / Phone Number",
-                            hintText: "e.g. 09123456789",
-                            prefixIcon: const Icon(Icons.phone_outlined, color: ArrozTheme.emerald),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
-                            ),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: ArrozTheme.mintAccent,
+                            shape: BoxShape.circle,
                           ),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) return "Kailangan ang Phone Number";
-                            if (v.trim().length < 11) return "Ilagay ang tamang mobile number";
-                            return null;
-                          },
+                          child: const Icon(Icons.phone_android_rounded, color: ArrozTheme.emerald, size: 22),
                         ),
+                        const SizedBox(width: 12),
+                        const Text("Phone Number", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: ArrozTheme.textDark)),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: isSaving ? null : () => Navigator.pop(context),
-                        child: const Text("Kanselahin", style: TextStyle(color: ArrozTheme.textSub, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 16),
+                    Form(
+                      key: formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "Pakilagay ang iyong updated na mobile number para makontak ka ng aming riders.",
+                            style: TextStyle(fontSize: 12, color: ArrozTheme.textSub, height: 1.4),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: phoneController,
+                            keyboardType: TextInputType.phone,
+                            decoration: InputDecoration(
+                              labelText: "Mobile / Phone Number",
+                              hintText: "e.g. 09123456789",
+                              prefixIcon: const Icon(Icons.phone_outlined, color: ArrozTheme.emerald),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: ArrozTheme.emerald, width: 2),
+                              ),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return "Kailangan ang Phone Number";
+                              if (v.trim().length < 11) return "Ilagay ang tamang mobile number";
+                              return null;
+                            },
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: ArrozTheme.emerald,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: isSaving ? null : () => Navigator.pop(context),
+                          child: const Text("Kanselahin", style: TextStyle(color: ArrozTheme.textSub, fontWeight: FontWeight.w600)),
                         ),
-                        onPressed: isSaving
-                            ? null
-                            : () async {
-                          if (formKey.currentState!.validate()) {
-                            setDialogState(() => isSaving = true);
-                            try {
-                              final String newPhone = phoneController.text.trim();
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ArrozTheme.emerald,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                            if (formKey.currentState!.validate()) {
+                              setDialogState(() => isSaving = true);
+                              try {
+                                final String newPhone = phoneController.text.trim();
 
-                              await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({
-                                'phone': newPhone,
-                              });
+                                await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({
+                                  'phone': newPhone,
+                                });
 
-                              if (!context.mounted) return;
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Matagumpay na na-update ang phone number!"), backgroundColor: ArrozTheme.emerald),
-                              );
-                            } catch (e) {
-                              setDialogState(() => isSaving = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Pumalya sa pag-save: $e"), backgroundColor: ArrozTheme.dangerRed),
-                              );
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Matagumpay na na-update ang phone number!"), backgroundColor: ArrozTheme.emerald),
+                                );
+                              } catch (e) {
+                                setDialogState(() => isSaving = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Pumalya sa pag-save: $e"), backgroundColor: ArrozTheme.dangerRed),
+                                );
+                              }
                             }
-                          }
-                        },
-                        child: isSaving
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text("I-save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  )
-                ],
+                          },
+                          child: isSaving
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text("I-save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
               ),
             ),
           );
@@ -413,6 +418,75 @@ class _ProfilePageState extends State<ProfilePage> {
             builder: (context, constraints) {
               final double screenWidth = constraints.maxWidth;
               final bool isTabletOrDesktop = screenWidth >= 600;
+
+              final menuItems = [
+                {
+                  "icon": Icons.person_outline_rounded,
+                  "title": "Personal Details",
+                  "subtitle": isNameMissing ? "⚠️ Walang pangalan na nakalagay" : "Pangalan, email, at phone number",
+                  "isWarning": isNameMissing,
+                  "onTap": () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PersonalDetailsPage(
+                          fullName: formattedFullName,
+                          email: userEmail,
+                          phone: userPhone,
+                          isNameMissing: isNameMissing,
+                          onEditNameTap: () => _showEditNameDialog(firstName, middleInitial, lastName),
+                          onEditPhoneTap: () => _showEditPhoneDialog(userPhone),
+                        ),
+                      ),
+                    );
+                  },
+                },
+                {
+                  "icon": Icons.location_on_outlined,
+                  "title": "Addresses",
+                  "subtitle": "I-manage ang iyong delivery addresses",
+                  "isWarning": false,
+                  "onTap": () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SecurityAndAddressPage(
+                          email: userEmail,
+                          fullName: formattedFullName,
+                        ),
+                      ),
+                    );
+                  },
+                },
+                {
+                  "icon": Icons.tune_rounded,
+                  "title": "Preferences",
+                  "subtitle": "Notifications at Wika ng application",
+                  "isWarning": false,
+                  "onTap": () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PreferencesPage(),
+                      ),
+                    );
+                  },
+                },
+                {
+                  "icon": Icons.help_outline_rounded,
+                  "title": "Help & Support Guide",
+                  "subtitle": "Gabay sa paggamit ng ArrozApp at FAQs",
+                  "isWarning": false,
+                  "onTap": () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HelpGuidePage(),
+                      ),
+                    );
+                  },
+                },
+              ];
 
               return Center(
                 child: Container(
@@ -503,26 +577,29 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ],
                               ),
                               const SizedBox(height: 56),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      formattedFullName,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: isTabletOrDesktop ? 22 : 19,
-                                        fontWeight: FontWeight.bold,
-                                        color: isNameMissing ? ArrozTheme.dangerRed : ArrozTheme.textDark,
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        formattedFullName,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: isTabletOrDesktop ? 22 : 19,
+                                          fontWeight: FontWeight.bold,
+                                          color: isNameMissing ? ArrozTheme.dangerRed : ArrozTheme.textDark,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined, size: 18, color: ArrozTheme.emerald),
-                                    onPressed: () => _showEditNameDialog(firstName, middleInitial, lastName),
-                                    splashRadius: 20,
-                                  )
-                                ],
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined, size: 18, color: ArrozTheme.emerald),
+                                      onPressed: () => _showEditNameDialog(firstName, middleInitial, lastName),
+                                      splashRadius: 20,
+                                    )
+                                  ],
+                                ),
                               ),
                               Text(
                                 userEmail,
@@ -600,92 +677,24 @@ class _ProfilePageState extends State<ProfilePage> {
                                 child: Text("Account Settings", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: ArrozTheme.textSub)),
                               ),
 
-                              LayoutBuilder(
-                                builder: (context, gridConstraints) {
-                                  final double itemWidth = isTabletOrDesktop
-                                      ? (gridConstraints.maxWidth - 16) / 2
-                                      : gridConstraints.maxWidth;
-
-                                  return Wrap(
-                                    spacing: 16,
-                                    runSpacing: 12,
-                                    children: [
-                                      SizedBox(
-                                        width: itemWidth,
-                                        child: _buildMenuTile(
-                                          icon: Icons.person_outline_rounded,
-                                          title: "Personal Details",
-                                          subtitle: isNameMissing ? "⚠️ Walang pangalan na nakalagay" : "Pangalan, email, at phone number",
-                                          isWarning: isNameMissing,
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => PersonalDetailsPage(
-                                                  fullName: formattedFullName,
-                                                  email: userEmail,
-                                                  phone: userPhone,
-                                                  isNameMissing: isNameMissing,
-                                                  onEditNameTap: () => _showEditNameDialog(firstName, middleInitial, lastName),
-                                                  onEditPhoneTap: () => _showEditPhoneDialog(userPhone),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: itemWidth,
-                                        child: _buildMenuTile(
-                                          icon: Icons.location_on_outlined,
-                                          title: "Addresses",
-                                          subtitle: "I-manage ang iyong delivery addresses",
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => SecurityAndAddressPage(
-                                                  email: userEmail,
-                                                  fullName: formattedFullName,
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: itemWidth,
-                                        child: _buildMenuTile(
-                                          icon: Icons.tune_rounded,
-                                          title: "Preferences",
-                                          subtitle: "Notifications at Wika ng application",
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => const PreferencesPage(),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: itemWidth,
-                                        child: _buildMenuTile(
-                                          icon: Icons.help_outline_rounded,
-                                          title: "Help & Support Guide",
-                                          subtitle: "Gabay sa paggamit ng ArrozApp at FAQs",
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => const HelpGuidePage(),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ],
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: menuItems.length,
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: isTabletOrDesktop ? 2 : 1,
+                                  mainAxisExtent: 76,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 12,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final item = menuItems[index];
+                                  return _buildMenuTile(
+                                    icon: item["icon"] as IconData,
+                                    title: item["title"] as String,
+                                    subtitle: item["subtitle"] as String,
+                                    isWarning: item["isWarning"] as bool,
+                                    onTap: item["onTap"] as VoidCallback,
                                   );
                                 },
                               ),
@@ -741,29 +750,55 @@ class _ProfilePageState extends State<ProfilePage> {
           color: isWarning ? ArrozTheme.warningOrange.withOpacity(0.4) : ArrozTheme.borderLight,
         ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: isWarning ? ArrozTheme.warningOrange.withOpacity(0.15) : ArrozTheme.mintAccent,
-            shape: BoxShape.circle,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: isWarning ? ArrozTheme.warningOrange.withOpacity(0.15) : ArrozTheme.mintAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: isWarning ? ArrozTheme.warningOrange : ArrozTheme.emerald, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: ArrozTheme.textDark),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isWarning ? FontWeight.bold : FontWeight.normal,
+                          color: isWarning ? ArrozTheme.warningOrange : ArrozTheme.textSub,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right_rounded, size: 20, color: ArrozTheme.textSub),
+              ],
+            ),
           ),
-          child: Icon(icon, color: isWarning ? ArrozTheme.warningOrange : ArrozTheme.emerald, size: 20),
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: ArrozTheme.textDark)),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isWarning ? FontWeight.bold : FontWeight.normal,
-            color: isWarning ? ArrozTheme.warningOrange : ArrozTheme.textSub,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: ArrozTheme.textSub),
-        onTap: onTap,
       ),
     );
   }
@@ -877,7 +912,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ============================================================================
-// 📱 1. PERSONAL DETAILS PAGE
+// 📱 1. PERSONAL DETAILS PAGE (Fixed Layout Alignment)
 // ============================================================================
 
 class PersonalDetailsPage extends StatelessWidget {
@@ -909,14 +944,15 @@ class PersonalDetailsPage extends StatelessWidget {
         iconTheme: const IconThemeData(color: ArrozTheme.textDark),
         centerTitle: true,
       ),
-      body: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 800),
-          width: double.infinity,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 800),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Padding(
                   padding: EdgeInsets.only(left: 4, bottom: 8),
@@ -932,6 +968,7 @@ class PersonalDetailsPage extends StatelessWidget {
                   child: Column(
                     children: [
                       ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         leading: Icon(
                           Icons.person_outline_rounded,
                           color: isNameMissing ? ArrozTheme.warningOrange : ArrozTheme.emerald,
@@ -958,12 +995,14 @@ class PersonalDetailsPage extends StatelessWidget {
                       ),
                       const Divider(height: 1, color: ArrozTheme.borderLight),
                       ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         leading: const Icon(Icons.email_outlined, color: ArrozTheme.emerald),
                         title: const Text("Email Address", style: TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
                         subtitle: Text(email, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: ArrozTheme.textDark)),
                       ),
                       const Divider(height: 1, color: ArrozTheme.borderLight),
                       ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         leading: const Icon(Icons.phone_outlined, color: ArrozTheme.emerald),
                         title: const Text("Mobile / Phone Number", style: TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
                         subtitle: Text(
@@ -1002,7 +1041,7 @@ class PersonalDetailsPage extends StatelessWidget {
                     border: Border.all(color: ArrozTheme.borderLight),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
@@ -1152,68 +1191,70 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
               child: Container(
                 constraints: BoxConstraints(maxWidth: screenWidth > 600 ? 450 : screenWidth * 0.9),
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Kumpirmahin ang Deletion Request", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "⏳ 30-DAY GRACE PERIOD:\n"
-                      "Ang iyong account ay ilalagay sa pending deletion status sa loob ng 30 araw bago tuluyang mabura.",
-                      style: TextStyle(fontSize: 12, color: ArrozTheme.textSub, height: 1.4),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: "Password",
-                        errorText: passwordError.isNotEmpty ? passwordError : null,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Kumpirmahin ang Deletion Request", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "⏳ 30-DAY GRACE PERIOD:\n"
+                        "Ang iyong account ay ilalagay sa pending deletion status sa loob ng 30 araw bago tuluyang mabura.",
+                        style: TextStyle(fontSize: 12, color: ArrozTheme.textSub, height: 1.4),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text("Cancel", style: TextStyle(color: ArrozTheme.textSub)),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: "Password",
+                          errorText: passwordError.isNotEmpty ? passwordError : null,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: ArrozTheme.dangerRed,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text("Cancel", style: TextStyle(color: ArrozTheme.textSub)),
                           ),
-                          onPressed: () async {
-                            FocusScope.of(context).unfocus();
-                            final pass = passwordController.text.trim();
-                            if (pass.isEmpty) {
-                              setDialogState(() => passwordError = "Required ang password!");
-                              return;
-                            }
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: ArrozTheme.dangerRed,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () async {
+                              FocusScope.of(context).unfocus();
+                              final pass = passwordController.text.trim();
+                              if (pass.isEmpty) {
+                                setDialogState(() => passwordError = "Required ang password!");
+                                return;
+                              }
 
-                            try {
-                              final currentUser = FirebaseAuth.instance.currentUser;
-                              AuthCredential cred = EmailAuthProvider.credential(email: widget.userEmail, password: pass);
-                              await currentUser!.reauthenticateWithCredential(cred);
+                              try {
+                                final currentUser = FirebaseAuth.instance.currentUser;
+                                AuthCredential cred = EmailAuthProvider.credential(email: widget.userEmail, password: pass);
+                                await currentUser!.reauthenticateWithCredential(cred);
 
-                              if (!context.mounted) return;
-                              Navigator.pop(context);
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
 
-                              _executeGracePeriodDeletion();
-                            } catch (e) {
-                              setDialogState(() => passwordError = "Maling password!");
-                            }
-                          },
-                          child: const Text("I-confirm ang Deletion", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ],
+                                _executeGracePeriodDeletion();
+                              } catch (e) {
+                                setDialogState(() => passwordError = "Maling password!");
+                              }
+                            },
+                            child: const Text("I-confirm ang Deletion", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1339,7 +1380,7 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
 }
 
 // ============================================================================
-// 📱 OTHER SUPPORTING PAGES
+// 📱 3. ADDRESSES PAGE (Fixed Layout Alignment)
 // ============================================================================
 
 class SecurityAndAddressPage extends StatelessWidget {
@@ -1363,15 +1404,20 @@ class SecurityAndAddressPage extends StatelessWidget {
         iconTheme: const IconThemeData(color: ArrozTheme.textDark),
         centerTitle: true,
       ),
-      body: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 800),
-          width: double.infinity,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 800),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text("Delivery Location", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: ArrozTheme.textSub)),
+                ),
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -1429,6 +1475,10 @@ class SecurityAndAddressPage extends StatelessWidget {
     );
   }
 }
+
+// ============================================================================
+// 📱 4. PREFERENCES PAGE (Fixed Layout Alignment)
+// ============================================================================
 
 class PreferencesPage extends StatelessWidget {
   const PreferencesPage({super.key});
@@ -1508,12 +1558,12 @@ class PreferencesPage extends StatelessWidget {
             iconTheme: const IconThemeData(color: ArrozTheme.textDark),
             centerTitle: true,
           ),
-          body: Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 800),
-              width: double.infinity,
+          body: Align(
+            alignment: Alignment.topCenter,
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(20.0),
               child: Container(
+                constraints: const BoxConstraints(maxWidth: 800),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
@@ -1524,6 +1574,7 @@ class PreferencesPage extends StatelessWidget {
                   children: [
                     SwitchListTile(
                       activeColor: ArrozTheme.emerald,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       title: const Text("Push Notifications", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       subtitle: Text(
                         isEnglish ? "Receive updates about your order status" : "Makatanggap ng update tungkol sa order status",
@@ -1534,6 +1585,7 @@ class PreferencesPage extends StatelessWidget {
                     ),
                     const Divider(height: 1, color: ArrozTheme.borderLight),
                     ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: const Icon(Icons.language_rounded, color: ArrozTheme.emerald),
                       title: Text(isEnglish ? "Language" : "Wika", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       subtitle: Text(languageProvider.languageName, style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
@@ -1551,6 +1603,10 @@ class PreferencesPage extends StatelessWidget {
   }
 }
 
+// ============================================================================
+// 📱 5. HELP GUIDE PAGE
+// ============================================================================
+
 class HelpGuidePage extends StatelessWidget {
   const HelpGuidePage({super.key});
 
@@ -1565,10 +1621,10 @@ class HelpGuidePage extends StatelessWidget {
         iconTheme: const IconThemeData(color: ArrozTheme.textDark),
         centerTitle: true,
       ),
-      body: Center(
+      body: Align(
+        alignment: Alignment.topCenter,
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800),
-          width: double.infinity,
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [

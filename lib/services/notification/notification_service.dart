@@ -54,6 +54,7 @@ class NotificationService {
         _firebaseMessagingBackgroundHandler,
       );
 
+      // Gamit ang standard Android launcher icon. Kung wala, gagamitin ang drawable resource as fallback.
       const AndroidInitializationSettings androidSettings =
       AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -146,37 +147,72 @@ class NotificationService {
     String channelId = channelAlerts,
     bool isOngoing = false,
   }) async {
-    final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    final bool isSOS = channelId == channelTyphoonSOS;
+    try {
+      final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      final bool isSOS = channelId == channelTyphoonSOS;
 
-    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      channelId,
-      isSOS ? '🚨 EMERGENCY ALERTS' : 'ArrozSistema System',
-      importance: isSOS ? Importance.max : Importance.high,
-      priority: isSOS ? Priority.max : Priority.high,
-      icon: '@mipmap/ic_launcher',
-      styleInformation: BigTextStyleInformation(body),
-      ongoing: isOngoing || isSOS,
-      autoCancel: !isSOS,
-      fullScreenIntent: isSOS,
-      sound: null,
-    );
+      AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        channelId,
+        isSOS ? '🚨 EMERGENCY ALERTS' : 'ArrozSistema System',
+        importance: isSOS ? Importance.max : Importance.high,
+        priority: isSOS ? Priority.max : Priority.high,
+        icon: '@mipmap/ic_launcher',
+        styleInformation: BigTextStyleInformation(body),
+        ongoing: isOngoing || isSOS,
+        autoCancel: !isSOS,
+        fullScreenIntent: isSOS,
+        sound: null,
+      );
 
-    NotificationDetails platformDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: DarwinNotificationDetails(
-        presentSound: true,
-        presentBanner: true,
-        presentList: true,
-        interruptionLevel: isSOS ? InterruptionLevel.critical : InterruptionLevel.active,
-      ),
-    );
+      NotificationDetails platformDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: DarwinNotificationDetails(
+          presentSound: true,
+          presentBanner: true,
+          presentList: true,
+          interruptionLevel: isSOS ? InterruptionLevel.critical : InterruptionLevel.active,
+        ),
+      );
 
-    await NotificationService()._localNotifs.show(targetId, title, body, platformDetails, payload: payload);
+      await NotificationService()._localNotifs.show(
+        targetId,
+        title,
+        body,
+        platformDetails,
+        payload: payload,
+      );
+    } catch (e) {
+      debugPrint("⚠️ Primary icon notification failed: $e. Trying fallback icon...");
+      // Fallback attempt gamit ang default android drawable kung sakaling pinalitan o nawala ang mipmap/ic_launcher
+      try {
+        final int targetId = id ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+        AndroidNotificationDetails fallbackDetails = AndroidNotificationDetails(
+          channelId,
+          'Arroz Notification',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@drawable/launch_background',
+        );
+
+        await NotificationService()._localNotifs.show(
+          targetId,
+          title,
+          body,
+          NotificationDetails(android: fallbackDetails),
+          payload: payload,
+        );
+      } catch (fallbackError) {
+        debugPrint("❌ Notification completely failed: $fallbackError");
+      }
+    }
   }
 
   static Future<void> dismissNotification(int id) async {
-    await NotificationService()._localNotifs.cancel(id);
+    try {
+      await NotificationService()._localNotifs.cancel(id);
+    } catch (e) {
+      debugPrint("Error dismissing notification: $e");
+    }
   }
 
   void _handleNotificationClick(String? payload) {
