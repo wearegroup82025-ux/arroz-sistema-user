@@ -76,6 +76,268 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         '${date.minute.toString().padLeft(2, '0')}';
   }
 
+  /// Tinitingnan kung lagpas na sa 7 araw mula nang ma-complete ang order
+  bool _isRatingExpired(Map<String, dynamic> orderData) {
+    dynamic completedValue = orderData['completedAt'] ?? orderData['updatedAt'] ?? orderData['createdAt'];
+    if (completedValue == null) return false;
+
+    DateTime? completedDate;
+    if (completedValue is Timestamp) {
+      completedDate = completedValue.toDate();
+    } else if (completedValue is DateTime) {
+      completedDate = completedValue;
+    }
+
+    if (completedDate == null) return false;
+
+    final difference = DateTime.now().difference(completedDate);
+    return difference.inDays >= 7;
+  }
+
+  /// Dialog para sa pag-rate at pag-review ng order
+  void _showRatingDialog(BuildContext context, String orderId) {
+    double selectedRating = 5.0;
+    final TextEditingController commentController = TextEditingController();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text(
+                "I-rate ang Order",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("Ibahagi ang iyong karanasan sa natanggap na produkto:"),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (index) {
+                        return IconButton(
+                          icon: Icon(
+                            index < selectedRating ? Icons.star : Icons.star_border,
+                            color: Colors.amber,
+                            size: 32,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              selectedRating = index + 1.0;
+                            });
+                          },
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: commentController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: "Isulat ang iyong review/komento...",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: ArrozTheme.emerald),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(context),
+                  child: const Text("I-cancel", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ArrozTheme.emerald,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setState(() {
+                            isSubmitting = true;
+                          });
+
+                          try {
+                            final currentUser = FirebaseAuth.instance.currentUser;
+
+                            // 1. Kukunin ang details ng order para makuha ang mga items
+                            final orderDoc = await FirebaseFirestore.instance
+                                .collection("orders")
+                                .doc(orderId)
+                                .get();
+
+                            final orderData = orderDoc.data() ?? {};
+                            final List<dynamic> items = orderData['items'] ?? [];
+                            final String userName =
+                                orderData['userName'] ?? currentUser?.displayName ?? 'Buyer';
+
+                            // 2. Batch write para i-save sa "reviews" collection at i-update ang "orders" doc
+                            final WriteBatch batch = FirebaseFirestore.instance.batch();
+
+                            for (var item in items) {
+                              final Map<String, dynamic> itemMap =
+                                  Map<String, dynamic>.from(item);
+                              final String? productId = itemMap['productId'];
+
+                              if (productId != null && productId.isNotEmpty) {
+                                final reviewRef =
+                                    FirebaseFirestore.instance.collection("reviews").doc();
+                                batch.set(reviewRef, {
+                                  "productId": productId,
+                                  "orderId": orderId,
+                                  "userId": currentUser?.uid,
+                                  "userName": userName,
+                                  "rating": selectedRating,
+                                  "comment": commentController.text.trim(),
+                                  "createdAt": FieldValue.serverTimestamp(),
+                                });
+                              }
+                            }
+
+                            // 3. I-update ang order status
+                            final orderRef =
+                                FirebaseFirestore.instance.collection("orders").doc(orderId);
+                            batch.update(orderRef, {
+                              "isRated": true,
+                              "rating": selectedRating,
+                              "reviewComment": commentController.text.trim(),
+                              "ratedAt": FieldValue.serverTimestamp(),
+                            });
+
+                            await batch.commit();
+
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Maraming salamat sa iyong rating at review!"),
+                                  backgroundColor: ArrozTheme.emerald,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Nagka-error sa pag-submit: $e")),
+                              );
+                            }
+                          } finally {
+                            if (context.mounted) {
+                              setState(() {
+                                isSubmitting = false;
+                              });
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text("I-submit", style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDeliveryDelayBanner(Map<String, dynamic> data) {
+    final title = (data['title'] ?? 'Delivery Delay Notice').toString();
+    final message = (data['message'] ?? 'Maaaring magkaroon ng delay sa delivery dahil sa masamang panahon.').toString();
+    final delay = (data['estimatedDelay'] ?? '').toString();
+    final reason = (data['reason'] ?? '').toString();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(left: 12, right: 12, top: 12, bottom: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 28),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade900,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(color: Colors.orange.shade900, fontSize: 13),
+                ),
+                if (delay.isNotEmpty || reason.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (delay.isNotEmpty) _noticeChip(Icons.schedule, 'Expected delay: $delay'),
+                      if (reason.isNotEmpty) _noticeChip(Icons.info_outline, reason),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noticeChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.orange.shade900),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.orange.shade900,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final language = context.watch<LanguageProvider>().language;
@@ -101,7 +363,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Scaffold(
             appBar: _buildAppBar(local),
-            body: _noOrders("Wala ka pang nalalagay na order."),
+            body: Column(
+              children: [
+                _buildAdminNoticeStream(),
+                Expanded(child: _noOrders("Wala ka pang nalalagay na order.")),
+              ],
+            ),
           );
         }
 
@@ -119,15 +386,22 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           appBar: _buildAppBar(local),
           body: Stack(
             children: [
-              TabBarView(
-                controller: _tabController,
+              Column(
                 children: [
-                  _buildListView(allOrders, local: local),
-                  _buildToPayTab(allOrders, local),
-                  _buildToShipTab(allOrders, local),
-                  _buildToReceiveTab(allOrders, local),
-                  _buildCompletedTab(allOrders, local),
-                  _buildCancelledTab(allOrders, local),
+                  _buildAdminNoticeStream(),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildListView(allOrders, local: local),
+                        _buildToPayTab(allOrders, local),
+                        _buildToShipTab(allOrders, local),
+                        _buildToReceiveTab(allOrders, local),
+                        _buildCompletedTab(allOrders, local),
+                        _buildCancelledTab(allOrders, local),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               if (isCancelling)
@@ -138,6 +412,20 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
             ],
           ),
         );
+      },
+    );
+  }
+
+  Widget _buildAdminNoticeStream() {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection("app_settings")
+          .doc("delivery_notice")
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        if (data == null || data['enabled'] != true) return const SizedBox.shrink();
+        return _buildDeliveryDelayBanner(data);
       },
     );
   }
@@ -172,7 +460,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     final toReceive = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
-
       return status == "To Deliver";
     }).toList();
 
@@ -217,50 +504,36 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       ),
       itemCount: orders.length,
       itemBuilder: (context, index) {
-        final orderData =
-        orders[index].data() as Map<String, dynamic>;
+        final orderDoc = orders[index];
+        final orderData = orderDoc.data() as Map<String, dynamic>;
 
-        final num totalAmount =
-            orderData['totalAmount'] ?? 0;
+        final num totalAmount = orderData['totalAmount'] ?? 0;
+        final String paymentMethod = orderData['paymentMethod'] ?? 'COD';
+        final String status = orderData['orderStatus'] ?? orderData['status'] ?? 'Pending';
+        final bool isPaid = orderData['isPaid'] ?? false;
+        final bool prepareToShip = orderData['prepareToShip'] ?? false;
+        final List<dynamic> itemsList = orderData['items'] ?? [];
 
-        final String paymentMethod =
-            orderData['paymentMethod'] ?? 'COD';
-
-        final String status =
-            orderData['orderStatus'] ??
-                orderData['status'] ??
-                'Pending';
-
-        final bool isPaid =
-            orderData['isPaid'] ?? false;
-
-        final bool prepareToShip =
-            orderData['prepareToShip'] ?? false;
-
-        final List<dynamic> itemsList =
-            orderData['items'] ?? [];
+        final bool isRated = orderData['isRated'] ?? false;
+        final num? rating = orderData['rating'];
+        final String? reviewComment = orderData['reviewComment'];
+        final bool ratingExpired = _isRatingExpired(orderData);
 
         return InkWell(
           borderRadius: BorderRadius.circular(12),
-
-          // ============================================================
-          // OPEN ORDER DETAILS
-          // ============================================================
           onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => OrderDetailsPage(
-                  orderId: orders[index].id,
+                  orderId: orderDoc.id,
                   orderData: orderData,
                 ),
               ),
             );
           },
-
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 6),
-
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
@@ -272,34 +545,21 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                 ),
               ],
             ),
-
             child: Padding(
               padding: const EdgeInsets.all(14),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
-
-                  // ======================================================
-                  // STATUS LEFT + ORDER DATE RIGHT
-                  // ======================================================
                   Row(
-                    mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment:
-                    CrossAxisAlignment.center,
-
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // STATUS - LEFT
                       _buildStatusBadge(
                         status,
                         isPaid,
                         paymentMethod,
                         prepareToShip,
                       ),
-
-                      // DATE - RIGHT
                       Text(
                         _formatOrderDate(
                           orderData['createdAt'],
@@ -315,36 +575,17 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
 
                   const Divider(height: 20),
 
-                  // ======================================================
-                  // ORDER ITEMS
-                  // ======================================================
                   ...itemsList.map((item) {
-                    final Map<String, dynamic> itemData =
-                    Map<String, dynamic>.from(item);
-
-                    final String itemName =
-                        itemData['name']?.toString() ??
-                            'Item';
-
-                    final num quantity =
-                        itemData['quantity'] ?? 1;
-
-                    final num price =
-                        itemData['price'] ?? 0;
-
-                    final num subtotal =
-                        itemData['subtotal'] ??
-                            (price * quantity);
+                    final Map<String, dynamic> itemData = Map<String, dynamic>.from(item);
+                    final String itemName = itemData['name']?.toString() ?? 'Item';
+                    final num quantity = itemData['quantity'] ?? 1;
+                    final num price = itemData['price'] ?? 0;
+                    final num subtotal = itemData['subtotal'] ?? (price * quantity);
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 4,
-                      ),
-
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
-                        mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
-
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
                             child: Text(
@@ -356,9 +597,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-
                           const SizedBox(width: 10),
-
                           Text(
                             '₱${subtotal.toStringAsFixed(2)}',
                             style: const TextStyle(
@@ -373,16 +612,9 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
 
                   const SizedBox(height: 10),
 
-                  // ======================================================
-                  // PAYMENT + TOTAL
-                  // ======================================================
                   Row(
-                    mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-
-                    crossAxisAlignment:
-                    CrossAxisAlignment.center,
-
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Text(
@@ -394,9 +626,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-
                       const SizedBox(width: 10),
-
                       Text(
                         'Total: ₱${totalAmount.toStringAsFixed(2)}',
                         style: const TextStyle(
@@ -408,14 +638,103 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     ],
                   ),
 
-                  // ======================================================
-                  // TAP INDICATOR
-                  // ======================================================
+                  if (status == "Completed") ...[
+                    const Divider(height: 20),
+                    if (isRated) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  "Your Rating: ",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                Row(
+                                  children: List.generate(5, (starIndex) {
+                                    return Icon(
+                                      starIndex < (rating ?? 0)
+                                          ? Icons.star
+                                          : Icons.star_border,
+                                      color: Colors.amber,
+                                      size: 16,
+                                    );
+                                  }),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "${rating?.toStringAsFixed(1) ?? '0.0'}",
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (reviewComment != null && reviewComment.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '"$reviewComment"',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ] else if (ratingExpired) ...[
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          "Rating period expired (7 days passed)",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showRatingDialog(context, orderDoc.id),
+                          icon: const Icon(Icons.star_outline, size: 16, color: Colors.white),
+                          label: const Text(
+                            "Rate Item",
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ArrozTheme.emerald,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+
                   const SizedBox(height: 8),
 
                   const Row(
-                    mainAxisAlignment:
-                    MainAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Icon(
                         Icons.chevron_right,
@@ -437,7 +756,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     Color badgeColor = Colors.grey;
     String text = status;
 
-    // Inuuna ang mismong explicit orderStatus bago ang payment conditions
     if (status == "Completed") {
       badgeColor = ArrozTheme.emerald;
       text = "Completed";

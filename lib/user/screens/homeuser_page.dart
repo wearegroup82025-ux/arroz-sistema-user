@@ -55,9 +55,7 @@ class _HomeUserPageState extends State<HomeUserPage> {
         .listen((snapshot) async {
       if (!mounted) return;
 
-      // Kung bagong gawa lang ang account at hindi pa ganap na naikakarga ang firestore doc
       if (!snapshot.exists || snapshot.data() == null) {
-        // Huwag agad i-force logout kung bagong register ang user
         return;
       }
 
@@ -69,7 +67,6 @@ class _HomeUserPageState extends State<HomeUserPage> {
         _isPendingDeletion = pending;
       });
 
-      // 1. Kapag naka-block ang account
       if (isBlocked) {
         await _forceLogout(
           title: 'Account Blocked',
@@ -78,7 +75,6 @@ class _HomeUserPageState extends State<HomeUserPage> {
         return;
       }
 
-      // 2. Kapag naka-pending deletion (Grace period)
       if (pending) {
         if (!_hasShownDeletionDialog) {
           _hasShownDeletionDialog = true;
@@ -88,12 +84,10 @@ class _HomeUserPageState extends State<HomeUserPage> {
         _hasShownDeletionDialog = false;
       }
     }, onError: (_) {
-      // Safety catch para sa stream error
       _navigateToLogin();
     });
   }
 
-  // Dialog para sa Deletion Grace Period
   void _showPendingDeletionDialog(String userId) {
     showDialog(
       context: context,
@@ -143,7 +137,6 @@ class _HomeUserPageState extends State<HomeUserPage> {
     );
   }
 
-  // Restore / Bawiin ang deletion
   Future<void> _cancelAccountDeletion(String userId) async {
     try {
       await FirebaseFirestore.instance.collection('users').doc(userId).update({
@@ -695,19 +688,22 @@ class _DashboardView extends StatelessWidget {
           ),
         ),
 
+        // SECTION FOR BEST SELLER
         SliverToBoxAdapter(
           child: _HorizontalProductSection(
             local: local,
             title: local.bestSeller,
-            categoryFilter: 'best_seller',
+            sectionType: 'best_seller',
             onSeeAll: onNavigateToProducts,
           ),
         ),
+
+        // SECTION FOR RECOMMENDATIONS
         SliverToBoxAdapter(
           child: _HorizontalProductSection(
             local: local,
             title: local.recommended,
-            categoryFilter: 'recommended',
+            sectionType: 'recommended',
             onSeeAll: onNavigateToProducts,
           ),
         ),
@@ -813,13 +809,13 @@ class _DashboardCardGrid extends StatelessWidget {
 class _HorizontalProductSection extends StatelessWidget {
   final AppLocalizations local;
   final String title;
-  final String categoryFilter;
+  final String sectionType; // 'best_seller' o 'recommended'
   final VoidCallback onSeeAll;
 
   const _HorizontalProductSection({
     required this.local,
     required this.title,
-    required this.categoryFilter,
+    required this.sectionType,
     required this.onSeeAll,
   });
 
@@ -849,7 +845,7 @@ class _HorizontalProductSection extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 150,
+          height: 175,
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('products').snapshots(),
             builder: (context, snapshot) {
@@ -861,18 +857,39 @@ class _HorizontalProductSection extends StatelessWidget {
 
               final allDocs = snapshot.data?.docs ?? [];
 
-              List<QueryDocumentSnapshot> docs = allDocs.where((doc) {
+              // 1. FILTERING:
+              List<QueryDocumentSnapshot> validDocs = allDocs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return data[categoryFilter] == true;
+                final bool isDeleted = data['isDeleted'] ?? false;
+                final double remainingKg = ((data['remainingKg'] ?? data['totalKg'] ?? 0.0) as num).toDouble();
+
+                return !isDeleted && remainingKg > 0;
               }).toList();
 
-              if (docs.isEmpty) {
-                docs = allDocs.take(5).toList();
-              } else if (docs.length > 5) {
-                docs = docs.sublist(0, 5);
+              // 2. SORTING / CRITERIA:
+              if (sectionType == 'best_seller') {
+                validDocs.sort((a, b) {
+                  final dataA = a.data() as Map<String, dynamic>;
+                  final dataB = b.data() as Map<String, dynamic>;
+                  final int soldA = (dataA['totalSold'] ?? dataA['sold'] ?? 0) as int;
+                  final int soldB = (dataB['totalSold'] ?? dataB['sold'] ?? 0) as int;
+                  return soldB.compareTo(soldA);
+                });
+              } else if (sectionType == 'recommended') {
+                validDocs.sort((a, b) {
+                  final dataA = a.data() as Map<String, dynamic>;
+                  final dataB = b.data() as Map<String, dynamic>;
+                  final double ratingA = ((dataA['rating'] ?? dataA['averageRating'] ?? 0.0) as num).toDouble();
+                  final double ratingB = ((dataB['rating'] ?? dataB['averageRating'] ?? 0.0) as num).toDouble();
+                  return ratingB.compareTo(ratingA);
+                });
               }
 
-              if (docs.isEmpty) {
+              if (validDocs.length > 5) {
+                validDocs = validDocs.sublist(0, 5);
+              }
+
+              if (validDocs.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 20.0),
                   child: Align(
@@ -885,15 +902,16 @@ class _HorizontalProductSection extends StatelessWidget {
               return ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: docs.length,
+                itemCount: validDocs.length,
                 itemBuilder: (context, index) {
-                  final prod = docs[index].data() as Map<String, dynamic>;
+                  final prod = validDocs[index].data() as Map<String, dynamic>;
                   final String? imageUrl = prod['imageUrl'] ?? prod['photoUrl'] ?? prod['image'];
+                  final int totalSold = (prod['totalSold'] ?? prod['sold'] ?? 0) as int;
 
                   return GestureDetector(
                     onTap: onSeeAll,
                     child: Container(
-                      width: 130,
+                      width: 135,
                       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surface,
@@ -932,8 +950,15 @@ class _HorizontalProductSection extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              "₱${prod['price'] ?? 0}",
-                              style: TextStyle(color: theme.colorScheme.primary, fontSize: 13, fontWeight: FontWeight.bold),
+                              "₱${prod['price'] ?? prod['srp'] ?? 0}",
+                              style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 4),
+                            
+                            // Total Sold na lamang ang ipapakita sa card preview
+                            Text(
+                              "$totalSold sold",
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.outline, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),

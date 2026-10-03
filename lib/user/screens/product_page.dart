@@ -16,7 +16,6 @@ Widget _buildProductImage(String url, {double? size, BoxFit fit = BoxFit.cover})
     return Icon(Icons.agriculture_rounded, size: size ?? 48, color: Colors.grey);
   }
 
-  // Pag-handle sa Network/Firebase Storage URLs
   if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
     return Image.network(
       cleanUrl,
@@ -33,7 +32,6 @@ Widget _buildProductImage(String url, {double? size, BoxFit fit = BoxFit.cover})
     );
   }
 
-  // Pag-handle sa Local File Paths
   final file = File(cleanUrl);
   if (file.existsSync()) {
     return Image.file(
@@ -83,6 +81,8 @@ class _ProductPageState extends State<ProductPage> {
           ? imageUrls
           : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]);
       final String description = data['description'] ?? '';
+      final double rating = ((data['rating'] ?? data['averageRating'] ?? 0.0) as num).toDouble();
+      final int totalSold = (data['totalSold'] ?? data['sold'] ?? 0) as int;
 
       for (int i = 0; i < breakdowns.length; i++) {
         final b = breakdowns[i];
@@ -107,6 +107,8 @@ class _ProductPageState extends State<ProductPage> {
           'description': description,
           'deliveryDays': data['deliveryDays'] ?? 3,
           'createdAt': createdAt?.toDate() ?? DateTime.now(),
+          'rating': rating,
+          'totalSold': totalSold,
         });
       }
     }
@@ -158,7 +160,6 @@ class _ProductPageState extends State<ProductPage> {
       ),
       body: Column(
         children: [
-          // SEARCH BAR
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -208,8 +209,6 @@ class _ProductPageState extends State<ProductPage> {
               ),
             ),
           ),
-
-          // PRODUCT GRID
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection("products").snapshots(),
@@ -245,7 +244,7 @@ class _ProductPageState extends State<ProductPage> {
                   padding: const EdgeInsets.all(14),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 0.68,
+                    childAspectRatio: 0.65,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                   ),
@@ -256,6 +255,7 @@ class _ProductPageState extends State<ProductPage> {
                     final int deliveryDays = product['deliveryDays'] ?? 3;
                     final double totalKgStock = product['remainingKg'];
                     final double srp = product['srpPerKg'];
+                    final int totalSold = (product['totalSold'] ?? 0) as int;
 
                     return InkWell(
                       onTap: () {
@@ -327,7 +327,15 @@ class _ProductPageState extends State<ProductPage> {
                                     "₱${srp.toStringAsFixed(2)} /kg",
                                     style: const TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
+                                  const SizedBox(height: 4),
+
+                                  // Total Sold na lamang ang nakadisplay
+                                  Text(
+                                    "$totalSold sold",
+                                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
+                                  ),
                                   const SizedBox(height: 6),
+
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -756,143 +764,329 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final String imageUrl = widget.product['imageUrl'] ?? '';
-    final List<String> rawImageUrls = List<String>.from(widget.product['imageUrls'] ?? const []);
-    final List<String> imageUrls = rawImageUrls.isNotEmpty
-        ? rawImageUrls
-        : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]);
-    final String description = widget.product['description'] ?? '';
-    final int deliveryDays = widget.product['deliveryDays'] ?? 3;
-    final double totalKgStock = widget.product['remainingKg'];
-    final double srp = widget.product['srpPerKg'];
+  /// WIDGET PARA SA RATING SUMMARY AT CUSTOMER REVIEWS
+  Widget _buildReviewsSection() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("reviews")
+          .where("productId", isEqualTo: widget.productId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(color: Color(0xFF16A34A)),
+            ),
+          );
+        }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: Text(widget.product['displayName'] ?? 'Product Details'),
-        backgroundColor: const Color(0xFF16A34A),
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _ProductImageGallery(imageUrls: imageUrls),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16.0),
-              color: Colors.white,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        "₱${srp.toStringAsFixed(2)}",
-                        style: const TextStyle(color: Color(0xFF16A34A), fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const Text(
-                        " / kg",
-                        style: TextStyle(color: Color(0xFF16A34A), fontSize: 14),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(widget.product['displayName'] ?? 'Palay Item',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(6)),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.local_shipping, size: 14, color: Color(0xFFD97706)),
-                            const SizedBox(width: 4),
-                            Text("Ships in $deliveryDays days",
-                                style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(6)),
-                        child: Text("Stock: ${totalKgStock.toStringAsFixed(0)} kg",
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+        final docs = snapshot.data?.docs ?? [];
+
+        if (docs.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16.0),
+            color: Colors.white,
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Product Ratings & Reviews", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                SizedBox(height: 8),
+                Text("Wala pang mga review para sa produktong ito.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+              ],
             ),
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16.0),
-              color: Colors.white,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Detalye ng Palay", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 8),
-                  Text("Uri: ${widget.product['type'] ?? 'N/A'}", style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 4),
-                  Text("Kondisyon: ${widget.product['condition'] ?? 'N/A'}", style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A))),
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    const Text("Deskripsyon:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                    const SizedBox(height: 4),
-                    Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 100),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: const BoxDecoration(
+          );
+        }
+
+        double totalRating = 0;
+        for (var doc in docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          totalRating += (data['rating'] ?? 0.0) as num;
+        }
+        double avgRating = totalRating / docs.length;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16.0),
           color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
-        ),
-        child: SafeArea(
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFD97706), width: 1.5),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              const Text("Product Ratings & Reviews", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Text(
+                    avgRating.toStringAsFixed(1),
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
-                  onPressed: () => _showAddToCartSheet(context),
-                  child: const Text("Add to Cart", style: TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
-                ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: List.generate(5, (index) {
+                          return Icon(
+                            index < avgRating.round() ? Icons.star : Icons.star_border,
+                            color: Colors.amber,
+                            size: 18,
+                          );
+                        }),
+                      ),
+                      Text(
+                        "${docs.length} (na) review",
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF16A34A),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () => _showPaymentSheet(context, 1),
-                  child: const Text("Buy Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                ),
+              const Divider(height: 24),
+
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: docs.length,
+                separatorBuilder: (context, index) => const Divider(height: 20),
+                itemBuilder: (context, index) {
+                  final review = docs[index].data() as Map<String, dynamic>;
+                  final String userName = review['userName'] ?? 'Buyer';
+                  final double rating = ((review['rating'] ?? 5.0) as num).toDouble();
+                  final String comment = review['comment'] ?? review['reviewComment'] ?? '';
+                  final Timestamp? createdAt = review['createdAt'] as Timestamp?;
+
+                  String dateStr = "";
+                  if (createdAt != null) {
+                    final date = createdAt.toDate();
+                    dateStr = "${date.month}/${date.day}/${date.year}";
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 14,
+                                backgroundColor: const Color(0xFF16A34A).withOpacity(0.2),
+                                child: Text(
+                                  userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF16A34A), fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(userName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                            ],
+                          ),
+                          Text(dateStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: List.generate(5, (i) {
+                          return Icon(
+                            i < rating ? Icons.star : Icons.star_border,
+                            color: Colors.amber,
+                            size: 14,
+                          );
+                        }),
+                      ),
+                      if (comment.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          comment,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF334155)),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection("products").doc(widget.productId).snapshots(),
+      builder: (context, snapshot) {
+        final docData = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+
+        final String imageUrl = docData['imageUrl'] ?? widget.product['imageUrl'] ?? '';
+        final List<String> rawImageUrls = List<String>.from(docData['imageUrls'] ?? widget.product['imageUrls'] ?? const []);
+        final List<String> imageUrls = rawImageUrls.isNotEmpty
+            ? rawImageUrls
+            : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]);
+        final String description = docData['description'] ?? widget.product['description'] ?? '';
+        final int deliveryDays = docData['deliveryDays'] ?? widget.product['deliveryDays'] ?? 3;
+        final double totalKgStock = (docData['remainingKg'] ?? widget.product['remainingKg'] ?? 0.0) as double;
+        final double srp = (docData['srpPerKg'] ?? widget.product['srpPerKg'] ?? 0.0) as double;
+        final double rating = ((docData['rating'] ?? widget.product['rating'] ?? 0.0) as num).toDouble();
+        final int totalSold = (docData['totalSold'] ?? docData['sold'] ?? widget.product['totalSold'] ?? 0) as int;
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8FAFC),
+          appBar: AppBar(
+            title: Text(widget.product['displayName'] ?? 'Product Details'),
+            backgroundColor: const Color(0xFF16A34A),
+            foregroundColor: Colors.white,
+          ),
+          body: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ProductImageGallery(imageUrls: imageUrls),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16.0),
+                  color: Colors.white,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            "₱${srp.toStringAsFixed(2)}",
+                            style: const TextStyle(color: Color(0xFF16A34A), fontSize: 24, fontWeight: FontWeight.bold),
+                          ),
+                          const Text(
+                            " / kg",
+                            style: TextStyle(color: Color(0xFF16A34A), fontSize: 14),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(widget.product['displayName'] ?? 'Palay Item',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                      const SizedBox(height: 8),
+
+                      // Rating at Total Orders/Sold Summary sa loob ng Product Detail Page
+                      Row(
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.star, color: Colors.amber, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                rating > 0 ? rating.toStringAsFixed(1) : "Walang rating",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            "$totalSold (na) kabuuang order",
+                            style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(6)),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.local_shipping, size: 14, color: Color(0xFFD97706)),
+                                const SizedBox(width: 4),
+                                Text("Ships in $deliveryDays days",
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(6)),
+                            child: Text("Stock: ${totalKgStock.toStringAsFixed(0)} kg",
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16.0),
+                  color: Colors.white,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Detalye ng Palay", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                      const SizedBox(height: 8),
+                      Text("Uri: ${widget.product['type'] ?? 'N/A'}", style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A))),
+                      const SizedBox(height: 4),
+                      Text("Kondisyon: ${widget.product['condition'] ?? 'N/A'}", style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A))),
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const Text("Deskripsyon:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                        const SizedBox(height: 4),
+                        Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                _buildReviewsSection(),
+
+                const SizedBox(height: 100),
+              ],
+            ),
+          ),
+          bottomNavigationBar: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
+            ),
+            child: SafeArea(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFD97706), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => _showAddToCartSheet(context),
+                      child: const Text("Add to Cart", style: TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A34A),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => _showPaymentSheet(context, 1),
+                      child: const Text("Buy Now", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
