@@ -449,6 +449,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
   String currentFlowStep = "REGION";
   bool isApiLoading = false;
   bool isLocating = false;
+  bool isSubmitting = false; // Pambara para iwas multiple clicks
 
   @override
   void initState() {
@@ -733,67 +734,74 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
   }
 
   Future<void> _processSave() async {
-    final formattedMI = mi.trim().isNotEmpty ? "${mi.trim()}. " : "";
-    final String synthesizedFullName = "${fname.trim()} $formattedMI${lname.trim()}";
+    if (isSubmitting) return; // Pigilan kung may pino-proseso na
+    setState(() => isSubmitting = true);
 
-    // Subukang mag-geocode kung walang ibinigay na GPS lat/long
-    if (latitude == null || longitude == null || latitude == 0.0 || longitude == 0.0) {
-      String fullAddr = "${streetBuildingHouseNo.trim()}, ${selectedBarangay ?? ''}, ${selectedCity ?? ''}, ${selectedProvince ?? ''}, Philippines";
-      var geocodedCoords = await DistanceService.geocodeAddress(fullAddr);
+    try {
+      final formattedMI = mi.trim().isNotEmpty ? "${mi.trim()}. " : "";
+      final String synthesizedFullName = "${fname.trim()} $formattedMI${lname.trim()}";
 
-      // Barangay fallback search kung fail ang street
-      if (geocodedCoords == null) {
-        String cleanAddr = "${selectedBarangay ?? ''}, ${selectedCity ?? ''}, ${selectedProvince ?? ''}, Philippines";
-        geocodedCoords = await DistanceService.geocodeAddress(cleanAddr);
-      }
+      // Subukang mag-geocode kung walang ibinigay na GPS lat/long
+      if (latitude == null || longitude == null || latitude == 0.0 || longitude == 0.0) {
+        String fullAddr = "${streetBuildingHouseNo.trim()}, ${selectedBarangay ?? ''}, ${selectedCity ?? ''}, ${selectedProvince ?? ''}, Philippines";
+        var geocodedCoords = await DistanceService.geocodeAddress(fullAddr);
 
-      if (geocodedCoords != null) {
-        latitude = geocodedCoords['latitude'];
-        longitude = geocodedCoords['longitude'];
-      } else if ((selectedBarangay ?? '').toLowerCase().contains("capalangan") || (selectedCity ?? '').toLowerCase().contains("apalit")) {
-        // Known fallback coordinates para sa Capalangan, Apalit, Pampanga
-        latitude = 14.9490;
-        longitude = 120.7586;
-      }
-    }
-
-    final addressMap = {
-      'firstName': fname.trim(),
-      'middleInitial': mi.trim(),
-      'lastName': lname.trim(),
-      'fullName': synthesizedFullName.trim().isEmpty ? fname.trim() : synthesizedFullName.trim(),
-      'mobileNumber': mobileNumber.trim(),
-      'phoneNumber': mobileNumber.trim(),
-      'region': selectedRegion ?? '',
-      'province': selectedProvince ?? '',
-      'cityMunicipality': selectedCity ?? '',
-      'barangay': selectedBarangay ?? '',
-      'streetBuildingHouseNo': streetBuildingHouseNo.trim(),
-      'postalCode': postalCode.trim(),
-      'latitude': latitude ?? 0.0,
-      'longitude': longitude ?? 0.0,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    if (widget.docId == null) {
-      addressMap['createdAt'] = FieldValue.serverTimestamp();
-      _verifyWithPhoneOTP(addressMap);
-    } else {
-      try {
-        await _saveAddressToFirestore(addressMap);
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Address updated successfully!"), backgroundColor: Colors.green),
-          );
+        // Barangay fallback search kung fail ang street
+        if (geocodedCoords == null) {
+          String cleanAddr = "${selectedBarangay ?? ''}, ${selectedCity ?? ''}, ${selectedProvince ?? ''}, Philippines";
+          geocodedCoords = await DistanceService.geocodeAddress(cleanAddr);
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Failed to save address: $e"), backgroundColor: Colors.red),
-          );
+
+        if (geocodedCoords != null) {
+          latitude = geocodedCoords['latitude'];
+          longitude = geocodedCoords['longitude'];
+        } else if ((selectedBarangay ?? '').toLowerCase().contains("capalangan") || (selectedCity ?? '').toLowerCase().contains("apalit")) {
+          // Known fallback coordinates para sa Capalangan, Apalit, Pampanga
+          latitude = 14.9490;
+          longitude = 120.7586;
         }
       }
+
+      final addressMap = {
+        'firstName': fname.trim(),
+        'middleInitial': mi.trim(),
+        'lastName': lname.trim(),
+        'fullName': synthesizedFullName.trim().isEmpty ? fname.trim() : synthesizedFullName.trim(),
+        'mobileNumber': mobileNumber.trim(),
+        'phoneNumber': mobileNumber.trim(),
+        'region': selectedRegion ?? '',
+        'province': selectedProvince ?? '',
+        'cityMunicipality': selectedCity ?? '',
+        'barangay': selectedBarangay ?? '',
+        'streetBuildingHouseNo': streetBuildingHouseNo.trim(),
+        'postalCode': postalCode.trim(),
+        'latitude': latitude ?? 0.0,
+        'longitude': longitude ?? 0.0,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (widget.docId == null) {
+        addressMap['createdAt'] = FieldValue.serverTimestamp();
+        await _verifyWithPhoneOTP(addressMap);
+      } else {
+        try {
+          await _saveAddressToFirestore(addressMap);
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Address updated successfully!"), backgroundColor: Colors.green),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Failed to save address: $e"), backgroundColor: Colors.red),
+            );
+          }
+        }
+      }
+    } finally {
+      if (mounted) setState(() => isSubmitting = false);
     }
   }
 
@@ -818,7 +826,7 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
 
     if (!mounted) return;
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
@@ -879,16 +887,20 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                   onPressed: isLoading
                       ? null
                       : () async {
-                          final otp = otpController.text.trim();
-                          if (otp.length != 6) {
-                            setDialogState(() => error = 'Please enter the 6-digit OTP.');
-                            return;
-                          }
-
+                          // Baguhin agad ang state sa true para hindi mapindot muli habang nabe-verify
                           setDialogState(() {
                             isLoading = true;
                             error = '';
                           });
+
+                          final otp = otpController.text.trim();
+                          if (otp.length != 6) {
+                            setDialogState(() {
+                              isLoading = false;
+                              error = 'Please enter the 6-digit OTP.';
+                            });
+                            return;
+                          }
 
                           final verified = await AuthService.instance.verifyPhoneOTP(
                             phoneNumber: mobileNumber,
@@ -1107,16 +1119,24 @@ class _ShopeeAddressFormState extends State<_ShopeeAddressForm> {
                               backgroundColor: Colors.green,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                           ),
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              _formKey.currentState!.save();
-                              _processSave();
-                            }
-                          },
-                          child: Text(
-                            widget.docId == null ? "Verify & Save Address" : "Update Address",
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
+                          onPressed: isSubmitting
+                              ? null
+                              : () {
+                                  if (_formKey.currentState!.validate()) {
+                                    _formKey.currentState!.save();
+                                    _processSave();
+                                  }
+                                },
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : Text(
+                                  widget.docId == null ? "Verify & Save Address" : "Update Address",
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 20),

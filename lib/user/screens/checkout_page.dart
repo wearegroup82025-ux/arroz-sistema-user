@@ -44,11 +44,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     'longitude': 121.0453,
   };
 
-  final TextEditingController _voucherController = TextEditingController();
-  double voucherDiscount = 0.0;
-  String? appliedVoucherCode;
-  bool isApplyingVoucher = false;
-
   int completedOrderCount = 0;
   double loyaltyDiscount = 0.0;
 
@@ -66,7 +61,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   void dispose() {
-    _voucherController.dispose();
     super.dispose();
   }
 
@@ -157,75 +151,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  Future<void> _applyVoucher() async {
-    final code = _voucherController.text.trim();
-    if (code.isEmpty) return;
-
-    setState(() => isApplyingVoucher = true);
-
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('vouchers')
-          .where('code', isEqualTo: code)
-          .where('isActive', isEqualTo: true)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Hindi valid o expired na ang voucher code.")),
-          );
-        }
-        return;
-      }
-
-      final voucherData = snapshot.docs.first.data();
-      final double discountVal = (voucherData['discountValue'] ?? 0).toDouble();
-      final String discountType = voucherData['discountType'] ?? 'fixed';
-      final double minSpend = (voucherData['minSpend'] ?? 0).toDouble();
-
-      if (widget.totalAmount < minSpend) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Kailangan ng minimum spend na ₱$minSpend para sa voucher na ito.")),
-          );
-        }
-        return;
-      }
-
-      double calculated = 0.0;
-      if (discountType == 'percentage') {
-        calculated = widget.totalAmount * (discountVal / 100);
-      } else {
-        calculated = discountVal;
-      }
-
-      setState(() {
-        voucherDiscount = calculated;
-        appliedVoucherCode = code;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Voucher applied! Nakatipid ka ng ₱${calculated.toStringAsFixed(2)}"),
-            backgroundColor: Theme.of(context).primaryColor,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: SelectableText("Error sa voucher: $e")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => isApplyingVoucher = false);
-    }
-  }
-
-  double get totalDiscount => loyaltyDiscount + voucherDiscount;
+  double get totalDiscount => loyaltyDiscount;
 
   double get finalTotal {
     double itemTotalAfterDiscount = widget.totalAmount - totalDiscount;
@@ -314,7 +240,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           });
         } catch (e) {
           debugPrint("❌ Transaction Error sa Stock Deduction: $e");
-          rethrow; // Re-throw para makita sa main catch block ng _placeOrder
+          rethrow;
         }
       } else {
         debugPrint("⚠️ WARNING: Walang Product ID sa item $item");
@@ -376,7 +302,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
 
     try {
-      // Dinagdagan ng timeout duration na 60 seconds para sa cold-start ng Render Backend
       final response = await http.post(
         Uri.parse("https://arroz-backend.onrender.com/api/create-payment"),
         headers: {"Content-Type": "application/json"},
@@ -490,7 +415,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final String contactNum = selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? "N/A";
       final String customerName = selectedAddress!['fullName'] ?? 'Customer';
 
-      // Kunin ang pinaka-latest na admin delivery notice bago i-save ang order.
       final noticeSnapshot = await FirebaseFirestore.instance
           .collection("app_settings")
           .doc("delivery_notice")
@@ -514,8 +438,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "shippingFee": shippingFee,
         "discountAmount": totalDiscount,
         "loyaltyDiscount": loyaltyDiscount,
-        "voucherDiscount": voucherDiscount,
-        "voucherCode": appliedVoucherCode ?? "",
         "totalAmount": finalTotal,
         "totalPalayKg": totalPalayKg,
         "paymentMethod": paymentMethod,
@@ -748,7 +670,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       Text("No address selected. Please click '+ Select / Add' above.", style: TextStyle(color: errorColor))
                     else ...[
                       Text("Name: ${selectedAddress!['fullName'] ?? 'N/A'}", style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text("Email: ${selectedAddress!['emailAddress'] ?? 'N/A'}"),
                       Text(
                         "Contact No: ${selectedAddress!['phoneNumber'] ?? selectedAddress!['mobileNumber'] ?? 'N/A'}",
                         style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
@@ -802,95 +723,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
             const SizedBox(height: 16),
 
-            // Vouchers & Discounts
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.confirmation_number_outlined, color: primaryColor),
-                        const SizedBox(width: 8),
-                        const Text("Vouchers & Diskwento", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
-                    ),
-                    const Divider(),
-
-                    if (completedOrderCount >= 3) ...[
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.stars, color: Colors.green),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                "Suki Customer Perk: May 5% Loyalty Discount ka dahil sa iyong $completedOrderCount completed orders!",
-                                style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _voucherController,
-                            decoration: const InputDecoration(
-                              hintText: "Enter Voucher Code (e.g. PALAY100)",
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
+            // Loyalty Discount
+            if (completedOrderCount >= 3)
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.stars, color: primaryColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Suki Customer Perk: May 5% Loyalty Discount ka dahil sa iyong $completedOrderCount completed orders!",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-                          onPressed: isApplyingVoucher ? null : _applyVoucher,
-                          child: isApplyingVoucher
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Text("Apply", style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                    if (appliedVoucherCode != null) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.check_circle, color: Colors.green, size: 18),
-                          const SizedBox(width: 4),
-                          Text("Voucher '$appliedVoucherCode' applied!", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () {
-                              setState(() {
-                                appliedVoucherCode = null;
-                                voucherDiscount = 0.0;
-                                _voucherController.clear();
-                              });
-                            },
-                            child: const Text("Remove", style: TextStyle(color: Colors.red)),
-                          ),
-                        ],
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
             const SizedBox(height: 16),
 
             // Order Summary
@@ -929,16 +786,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         children: [
                           const Text("Suki Loyalty Discount (5%):", style: TextStyle(color: Colors.green)),
                           Text("-₱${loyaltyDiscount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ],
-                    if (voucherDiscount > 0) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text("Voucher Discount:", style: TextStyle(color: Colors.green)),
-                          Text("-₱${voucherDiscount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],

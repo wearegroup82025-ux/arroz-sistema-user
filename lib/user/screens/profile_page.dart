@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User; // Pinalitan ang FirebaseStorage ng Supabase
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -423,7 +423,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 {
                   "icon": Icons.person_outline_rounded,
                   "title": "Personal Details",
-                  "subtitle": isNameMissing ? "⚠️ Walang pangalan na nakalagay" : "Pangalan, email, at phone number",
+                  "subtitle": isNameMissing ? "⚠ Walang pangalan na nakalagay" : "Pangalan, email, at phone number",
                   "isWarning": isNameMissing,
                   "onTap": () {
                     Navigator.push(
@@ -496,87 +496,102 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: CustomScrollView(
                     physics: const BouncingScrollPhysics(),
                     slivers: [
-                      // 1. TOP PROFILE HEADER & AVATAR
                       SliverToBoxAdapter(
                         child: Container(
                           width: double.infinity,
                           color: ArrozTheme.cardWhite,
                           child: Column(
                             children: [
-                              Stack(
-                                clipBehavior: Clip.none,
-                                alignment: Alignment.center,
-                                children: [
-                                  Container(
-                                    height: isTabletOrDesktop ? 180 : 130,
-                                    width: double.infinity,
-                                    decoration: const BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [ArrozTheme.emerald, ArrozTheme.emeraldLight],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
+                              SizedBox(
+                                height: (isTabletOrDesktop ? 180 : 130) + 50,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  alignment: Alignment.topCenter,
+                                  children: [
+                                    Container(
+                                      height: isTabletOrDesktop ? 180 : 130,
+                                      width: double.infinity,
+                                      decoration: const BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [ArrozTheme.emerald, ArrozTheme.emeraldLight],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Positioned(
-                                    bottom: -48,
-                                    child: Stack(
-                                      alignment: Alignment.bottomRight,
-                                      children: [
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 4),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.08),
-                                                blurRadius: 10,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: CircleAvatar(
-                                            radius: isTabletOrDesktop ? 56 : 48,
-                                            backgroundColor: ArrozTheme.mintAccent,
-                                            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty) ? NetworkImage(photoUrl) : null,
-                                            child: _isUploadingImage
-                                                ? const CircularProgressIndicator(color: ArrozTheme.emerald)
-                                                : (photoUrl == null || photoUrl.isEmpty)
-                                                ? Text(
-                                              formattedFullName.isNotEmpty ? formattedFullName[0].toUpperCase() : "A",
-                                              style: TextStyle(
-                                                fontSize: isTabletOrDesktop ? 40 : 34,
-                                                fontWeight: FontWeight.bold,
-                                                color: ArrozTheme.emerald,
-                                              ),
-                                            )
-                                                : null,
-                                          ),
-                                        ),
-                                        GestureDetector(
-                                          onTap: () => _showImageSourcePicker(context),
-                                          child: Container(
-                                            padding: const EdgeInsets.all(7),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black.withOpacity(0.12),
-                                                  blurRadius: 6,
-                                                  offset: const Offset(0, 2),
+                                    Positioned(
+                                      top: (isTabletOrDesktop ? 180 : 130) - 50,
+                                      child: SizedBox(
+                                        width: isTabletOrDesktop ? 120 : 100,
+                                        height: isTabletOrDesktop ? 120 : 100,
+                                        child: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            GestureDetector(
+                                              onTap: () => _showImageSourcePicker(context),
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(color: Colors.white, width: 4),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.black.withOpacity(0.12),
+                                                      blurRadius: 10,
+                                                      offset: const Offset(0, 4),
+                                                    ),
+                                                  ],
                                                 ),
-                                              ],
+                                                child: CircleAvatar(
+                                                  radius: isTabletOrDesktop ? 54 : 44,
+                                                  backgroundColor: ArrozTheme.mintAccent,
+                                                  backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                                                      ? NetworkImage(photoUrl)
+                                                      : null,
+                                                  child: _isUploadingImage
+                                                      ? const CircularProgressIndicator(color: ArrozTheme.emerald)
+                                                      : (photoUrl == null || photoUrl.isEmpty)
+                                                      ? Text(
+                                                    formattedFullName.isNotEmpty ? formattedFullName[0].toUpperCase() : "A",
+                                                    style: TextStyle(
+                                                      fontSize: isTabletOrDesktop ? 40 : 34,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: ArrozTheme.emerald,
+                                                    ),
+                                                  )
+                                                      : null,
+                                                ),
+                                              ),
                                             ),
-                                            child: const Icon(Icons.camera_alt_rounded, size: 16, color: ArrozTheme.emerald),
-                                          ),
+                                            Positioned(
+                                              bottom: 2,
+                                              right: 2,
+                                              child: Material(
+                                                color: Colors.white,
+                                                shape: const CircleBorder(),
+                                                elevation: 4,
+                                                child: InkWell(
+                                                  customBorder: const CircleBorder(),
+                                                  onTap: () => _showImageSourcePicker(context),
+                                                  child: const Padding(
+                                                    padding: EdgeInsets.all(8.0),
+                                                    child: Icon(
+                                                      Icons.camera_alt_rounded,
+                                                      size: 18,
+                                                      color: ArrozTheme.emerald,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 56),
+
+                              const SizedBox(height: 8),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
                                 child: Row(
@@ -662,7 +677,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
 
-                      // 2. MAIN MENU SETTINGS
                       SliverPadding(
                         padding: EdgeInsets.symmetric(
                           horizontal: isTabletOrDesktop ? 24 : 16,
@@ -701,7 +715,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
                               const SizedBox(height: 28),
 
-                              // LOGOUT BUTTON
                               SizedBox(
                                 width: double.infinity,
                                 height: 48,
@@ -807,14 +820,14 @@ class _ProfilePageState extends State<ProfilePage> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => SafeArea(
+      builder: (bottomSheetContext) => SafeArea(
         child: Wrap(
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined, color: ArrozTheme.emerald),
               title: const Text('Mula sa Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(bottomSheetContext);
                 _pickAndUploadImage(ImageSource.gallery);
               },
             ),
@@ -822,7 +835,7 @@ class _ProfilePageState extends State<ProfilePage> {
               leading: const Icon(Icons.camera_alt_outlined, color: ArrozTheme.emerald),
               title: const Text('Kumuha ng Litrato', style: TextStyle(fontWeight: FontWeight.w600)),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(bottomSheetContext);
                 _pickAndUploadImage(ImageSource.camera);
               },
             ),
@@ -832,31 +845,71 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // --------------------------------------------------------------------------
+  // 📸 SUPABASE IMAGE UPLOAD FUNCTION
+  // --------------------------------------------------------------------------
   Future<void> _pickAndUploadImage(ImageSource source) async {
+    if (_currentUser == null) return;
+
     try {
-      final XFile? pickedFile = await _picker.pickImage(source: source, imageQuality: 75, maxWidth: 600);
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 75,
+        maxWidth: 600,
+      );
+
       if (pickedFile == null) return;
 
       setState(() => _isUploadingImage = true);
 
       final File imageFile = File(pickedFile.path);
-      final String refPath = 'profile_pictures/${_currentUser!.uid}.jpg';
+      if (!await imageFile.exists()) {
+        throw Exception("Hindi mahanap ang napiling larawan sa device.");
+      }
 
-      final storageRef = FirebaseStorage.instance.ref().child(refPath);
-      await storageRef.putFile(imageFile);
+      final String fileName = '${_currentUser!.uid}.jpg';
+      final supabase = Supabase.instance.client;
 
-      final String downloadUrl = await storageRef.getDownloadURL();
+      // 1. I-upload ang litrato sa Supabase Storage (Bucket: profile_pic)
+      await supabase.storage.from('profile_pic').upload(
+            fileName,
+            imageFile,
+            fileOptions: const FileOptions(
+              cacheControl: '3600',
+              upsert: true, // Overwrite kung may umiiral nang larawan
+              contentType: 'image/jpeg',
+            ),
+          );
+
+      // 2. Kunin ang Public URL ng na-upload na larawan sa Supabase
+      final String downloadUrl = supabase.storage
+          .from('profile_pic')
+          .getPublicUrl(fileName);
+
+      // 3. I-update ang URL sa Firestore at Firebase Auth Profile
+      await FirebaseFirestore.instance
+          .collection("users")
+          .doc(_currentUser!.uid)
+          .set({'photoUrl': downloadUrl}, SetOptions(merge: true));
 
       await _currentUser!.updatePhotoURL(downloadUrl);
-      await FirebaseFirestore.instance.collection("users").doc(_currentUser!.uid).update({'photoUrl': downloadUrl});
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Na-upload na ang Profile Picture!"), backgroundColor: ArrozTheme.emerald),
+        const SnackBar(
+          content: Text("Na-upload na ang Profile Picture sa Supabase!"),
+          backgroundColor: ArrozTheme.emerald,
+        ),
       );
     } catch (e) {
+      debugPrint("Error uploading image: $e");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: ArrozTheme.dangerRed));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Pumalya sa pag-upload: $e"),
+          backgroundColor: ArrozTheme.dangerRed,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isUploadingImage = false);
     }
@@ -912,7 +965,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ============================================================================
-// 📱 1. PERSONAL DETAILS PAGE (Fixed Layout Alignment)
+// 📱 1. PERSONAL DETAILS PAGE
 // ============================================================================
 
 class PersonalDetailsPage extends StatelessWidget {
@@ -1380,7 +1433,7 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
 }
 
 // ============================================================================
-// 📱 3. ADDRESSES PAGE (Fixed Layout Alignment)
+// 📱 3. ADDRESSES PAGE
 // ============================================================================
 
 class SecurityAndAddressPage extends StatelessWidget {
@@ -1477,7 +1530,7 @@ class SecurityAndAddressPage extends StatelessWidget {
 }
 
 // ============================================================================
-// 📱 4. PREFERENCES PAGE (Fixed Layout Alignment)
+// 📱 4. PREFERENCES PAGE
 // ============================================================================
 
 class PreferencesPage extends StatelessWidget {

@@ -861,7 +861,18 @@ class _HorizontalProductSection extends StatelessWidget {
               List<QueryDocumentSnapshot> validDocs = allDocs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final bool isDeleted = data['isDeleted'] ?? false;
-                final double remainingKg = ((data['remainingKg'] ?? data['totalKg'] ?? 0.0) as num).toDouble();
+                
+                // Kinakalkula rin ang natitirang stock sa breakdowns kung kinakailangan
+                double remainingKg = 0.0;
+                if (data['remainingKg'] != null) {
+                  remainingKg = (data['remainingKg'] as num).toDouble();
+                } else if (data['totalKg'] != null) {
+                  remainingKg = (data['totalKg'] as num).toDouble();
+                } else if (data['breakdowns'] != null && (data['breakdowns'] as List).isNotEmpty) {
+                  for (var b in (data['breakdowns'] as List)) {
+                    remainingKg += ((b['kg'] ?? 0.0) as num).toDouble();
+                  }
+                }
 
                 return !isDeleted && remainingKg > 0;
               }).toList();
@@ -908,6 +919,23 @@ class _HorizontalProductSection extends StatelessWidget {
                   final String? imageUrl = prod['imageUrl'] ?? prod['photoUrl'] ?? prod['image'];
                   final int totalSold = (prod['totalSold'] ?? prod['sold'] ?? 0) as int;
 
+                  // KUKUHA NG TAMA AT BALIDONG PRESYO SA IBA'T IBANG STRUCTURES
+                  double displayPrice = 0.0;
+                  if (prod['price'] != null && (prod['price'] as num) > 0) {
+                    displayPrice = (prod['price'] as num).toDouble();
+                  } else if (prod['srp'] != null && (prod['srp'] as num) > 0) {
+                    displayPrice = (prod['srp'] as num).toDouble();
+                  } else if (prod['srpPerKg'] != null && (prod['srpPerKg'] as num) > 0) {
+                    displayPrice = (prod['srpPerKg'] as num).toDouble();
+                  } else if (prod['breakdowns'] != null && (prod['breakdowns'] as List).isNotEmpty) {
+                    final breakdowns = prod['breakdowns'] as List;
+                    final activeBreakdown = breakdowns.firstWhere(
+                      (b) => ((b['kg'] ?? 0) as num) > 0,
+                      orElse: () => breakdowns.first,
+                    );
+                    displayPrice = ((activeBreakdown['srp'] ?? 0.0) as num).toDouble();
+                  }
+
                   return GestureDetector(
                     onTap: onSeeAll,
                     child: Container(
@@ -943,19 +971,21 @@ class _HorizontalProductSection extends StatelessWidget {
                             ),
                             const Spacer(),
                             Text(
-                              prod['name'] ?? prod['title'] ?? 'Palay Bag',
+                              prod['name'] ?? prod['title'] ?? (prod['type'] != null ? "${prod['type']} Palay" : 'Palay Bag'),
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
+                            
+                            // IPAPAKITA NA DITO ANG TOTOONG KINUHA NA PRESYO
                             Text(
-                              "₱${prod['price'] ?? prod['srp'] ?? 0}",
+                              "₱${displayPrice.toStringAsFixed(2)} /kg",
                               style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 4),
                             
-                            // Total Sold na lamang ang ipapakita sa card preview
+                            // Total Sold
                             Text(
                               "$totalSold sold",
                               style: TextStyle(fontSize: 11, color: theme.colorScheme.outline, fontWeight: FontWeight.w500),

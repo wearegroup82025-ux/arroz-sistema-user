@@ -13,6 +13,8 @@
     <!-- Exact alarm - keep only if your app schedules exact notifications -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <uses-permission android:name="android.permission.CAMERA"/>
+
     <queries>
 
         <!-- Browser / PayMongo -->
