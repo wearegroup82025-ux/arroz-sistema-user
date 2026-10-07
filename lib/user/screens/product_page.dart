@@ -46,6 +46,27 @@ Widget _buildProductImage(String url, {double? size, BoxFit fit = BoxFit.cover})
   return Icon(Icons.agriculture_rounded, size: size ?? 48, color: Colors.grey);
 }
 
+
+double _toDouble(dynamic value, [double fallback = 0.0]) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+int _toInt(dynamic value, [int fallback = 0]) {
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+List<String> _toStringList(dynamic value) {
+  if (value is Iterable) {
+    return value
+        .map((e) => e?.toString().trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+  return <String>[];
+}
+
 class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
 
@@ -72,23 +93,23 @@ class _ProductPageState extends State<ProductPage> {
       if (data['isDeleted'] == true) continue;
 
       final String docId = doc.id;
-      final String type = data['type'] ?? 'N/A';
-      final List breakdowns = data['breakdowns'] ?? [];
+      final String type = data['type']?.toString() ?? 'N/A';
+      final List breakdowns = data['breakdowns'] is List ? List.from(data['breakdowns']) : <dynamic>[];
       final Timestamp? createdAt = data['createdAt'] as Timestamp?;
-      final String imageUrl = data['imageUrl'] ?? '';
-      final List<String> imageUrls = List<String>.from(data['imageUrls'] ?? const []);
+      final String imageUrl = data['imageUrl']?.toString() ?? '';
+      final List<String> imageUrls = _toStringList(data['imageUrls']);
       final List<String> safeImageUrls = imageUrls.isNotEmpty
           ? imageUrls
           : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]);
-      final String description = data['description'] ?? '';
+      final String description = data['description']?.toString() ?? '';
       final double rating = ((data['rating'] ?? data['averageRating'] ?? 0.0) as num).toDouble();
-      final int totalSold = (data['totalSold'] ?? data['sold'] ?? 0) as int;
+      final int totalSold = _toInt(data['totalSold'] ?? data['sold']);
 
       for (int i = 0; i < breakdowns.length; i++) {
         final b = breakdowns[i];
-        final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
-        final double bSrp = ((b['srp'] ?? 0.0) as num).toDouble();
-        final String condition = b['condition'] ?? 'N/A';
+        final double bKg = _toDouble(b['kg']);
+        final double bSrp = _toDouble(b['srp']);
+        final String condition = b['condition']?.toString() ?? 'N/A';
 
         final String displayName = "$type Palay ($condition)";
         final String groupKey = "${type}_$condition".toLowerCase().replaceAll(" ", "");
@@ -252,10 +273,10 @@ class _ProductPageState extends State<ProductPage> {
                   itemBuilder: (context, index) {
                     final product = filteredProducts[index];
                     final String imageUrl = product['imageUrl'] ?? '';
-                    final int deliveryDays = product['deliveryDays'] ?? 3;
-                    final double totalKgStock = product['remainingKg'];
-                    final double srp = product['srpPerKg'];
-                    final int totalSold = (product['totalSold'] ?? 0) as int;
+                    final int deliveryDays = _toInt(product['deliveryDays'], 3);
+                    final double totalKgStock = _toDouble(product['remainingKg']);
+                    final double srp = _toDouble(product['srpPerKg']);
+                    final int totalSold = _toInt(product['totalSold']);
 
                     return InkWell(
                       onTap: () {
@@ -557,11 +578,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   void _showAddToCartSheet(BuildContext pageContext) {
     int selectedQuantityKg = 1;
-    double totalKgStock = widget.product['remainingKg'];
-    double srp = widget.product['srpPerKg'];
+    double totalKgStock = _toDouble(widget.product['remainingKg']);
+    double srp = _toDouble(widget.product['srpPerKg']);
+
+    final TextEditingController quantityController =
+        TextEditingController(text: selectedQuantityKg.toString());
 
     showModalBottomSheet(
       context: pageContext,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetContext) {
         return StatefulBuilder(
@@ -569,7 +594,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             double totalAmount = srp * selectedQuantityKg;
 
             return Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -593,15 +623,51 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           children: [
                             IconButton(
                               onPressed: () {
-                                if (selectedQuantityKg > 1) setSheetState(() => selectedQuantityKg--);
+                                if (selectedQuantityKg > 1) {
+                                  setSheetState(() {
+                                    selectedQuantityKg--;
+                                    quantityController.text = selectedQuantityKg.toString();
+                                  });
+                                }
                               },
                               icon: const Icon(Icons.remove, color: Color(0xFF16A34A), size: 18),
                             ),
-                            Text("$selectedQuantityKg kg", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                            SizedBox(
+                              width: 60,
+                              child: TextField(
+                                controller: quantityController,
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                decoration: const InputDecoration(
+                                  suffixText: 'kg',
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                onChanged: (val) {
+                                  int? parsed = int.tryParse(val);
+                                  if (parsed != null && parsed > 0) {
+                                    if (parsed > totalKgStock) {
+                                      parsed = totalKgStock.toInt();
+                                      quantityController.text = parsed.toString();
+                                      quantityController.selection = TextSelection.fromPosition(
+                                        TextEditingValue(text: quantityController.text).selection.base,
+                                      );
+                                    }
+                                    setSheetState(() {
+                                      selectedQuantityKg = parsed!;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
                             IconButton(
                               onPressed: () {
                                 if ((selectedQuantityKg + 1) <= totalKgStock) {
-                                  setSheetState(() => selectedQuantityKg++);
+                                  setSheetState(() {
+                                    selectedQuantityKg++;
+                                    quantityController.text = selectedQuantityKg.toString();
+                                  });
                                 }
                               },
                               icon: const Icon(Icons.add, color: Color(0xFF16A34A), size: 18),
@@ -635,7 +701,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                 "breakdownIndex": widget.product['breakdownIndex'],
                                 "name": widget.product["displayName"],
                                 "price": srp,
-                                "imageUrl": widget.product["imageUrl"] ?? "",
+                                "imageUrl": (widget.product["imageUrls"] is List && (widget.product["imageUrls"] as List).isNotEmpty)
+                                    ? (widget.product["imageUrls"] as List).first.toString()
+                                    : (widget.product["imageUrl"]?.toString() ?? ""),
                                 "quantity": selectedQuantityKg,
                                 "addedAt": FieldValue.serverTimestamp(),
                               }, SetOptions(merge: true));
@@ -662,8 +730,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   void _showPaymentSheet(BuildContext pageContext, int initialQty) {
     int selectedQuantityKg = initialQty;
-    double totalKgStock = widget.product['remainingKg'];
-    double srp = widget.product['srpPerKg'];
+    double totalKgStock = _toDouble(widget.product['remainingKg']);
+    double srp = _toDouble(widget.product['srpPerKg']);
+
+    final TextEditingController quantityController =
+        TextEditingController(text: selectedQuantityKg.toString());
 
     showModalBottomSheet(
       context: pageContext,
@@ -696,15 +767,51 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         children: [
                           IconButton(
                             onPressed: () {
-                              if (selectedQuantityKg > 1) setSheetState(() => selectedQuantityKg--);
+                              if (selectedQuantityKg > 1) {
+                                setSheetState(() {
+                                  selectedQuantityKg--;
+                                  quantityController.text = selectedQuantityKg.toString();
+                                });
+                              }
                             },
                             icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF16A34A)),
                           ),
-                          Text("$selectedQuantityKg kg", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          SizedBox(
+                            width: 60,
+                            child: TextField(
+                              controller: quantityController,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                              decoration: const InputDecoration(
+                                suffixText: 'kg',
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onChanged: (val) {
+                                int? parsed = int.tryParse(val);
+                                if (parsed != null && parsed > 0) {
+                                  if (parsed > totalKgStock) {
+                                    parsed = totalKgStock.toInt();
+                                    quantityController.text = parsed.toString();
+                                    quantityController.selection = TextSelection.fromPosition(
+                                      TextEditingValue(text: quantityController.text).selection.base,
+                                    );
+                                  }
+                                  setSheetState(() {
+                                    selectedQuantityKg = parsed!;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
                           IconButton(
                             onPressed: () {
                               if ((selectedQuantityKg + 1) <= totalKgStock) {
-                                setSheetState(() => selectedQuantityKg++);
+                                setSheetState(() {
+                                  selectedQuantityKg++;
+                                  quantityController.text = selectedQuantityKg.toString();
+                                });
                               }
                             },
                             icon: const Icon(Icons.add_circle_outline, color: Color(0xFF16A34A)),
@@ -743,7 +850,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                         "price": srp,
                                         "quantity": selectedQuantityKg,
                                         "subtotal": totalAmount,
-                                        "imageUrl": widget.product["imageUrl"] ?? "",
+                                        "imageUrl": (widget.product["imageUrls"] is List && (widget.product["imageUrls"] as List).isNotEmpty)
+                                    ? (widget.product["imageUrls"] as List).first.toString()
+                                    : (widget.product["imageUrl"]?.toString() ?? ""),
                                       }
                                     ],
                                     totalAmount: totalAmount,
@@ -921,17 +1030,41 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       builder: (context, snapshot) {
         final docData = snapshot.data?.data() as Map<String, dynamic>? ?? {};
 
-        final String imageUrl = docData['imageUrl'] ?? widget.product['imageUrl'] ?? '';
-        final List<String> rawImageUrls = List<String>.from(docData['imageUrls'] ?? widget.product['imageUrls'] ?? const []);
-        final List<String> imageUrls = rawImageUrls.isNotEmpty
-            ? rawImageUrls
-            : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]);
+        final String imageUrl = docData['imageUrl']?.toString() ??
+            widget.product['imageUrl']?.toString() ?? '';
+
+        // Each condition/product entry may now have its own up-to-9 photos.
+        // Prefer the selected breakdown's images, then fall back to the
+        // legacy top-level imageUrls/imageUrl fields.
+        List<String> breakdownImageUrls = <String>[];
+        final dynamic rawBreakdowns = docData['breakdowns'];
+        final int breakdownIndex = _toInt(widget.product['breakdownIndex']);
+        if (rawBreakdowns is List &&
+            breakdownIndex >= 0 &&
+            breakdownIndex < rawBreakdowns.length &&
+            rawBreakdowns[breakdownIndex] is Map) {
+          final breakdown = Map<String, dynamic>.from(rawBreakdowns[breakdownIndex] as Map);
+          breakdownImageUrls = _toStringList(breakdown['imageUrls']);
+          if (breakdownImageUrls.isEmpty && breakdown['imageUrl'] != null) {
+            final one = breakdown['imageUrl'].toString().trim();
+            if (one.isNotEmpty) breakdownImageUrls = [one];
+          }
+        }
+
+        final List<String> rawImageUrls = _toStringList(
+          docData['imageUrls'] ?? widget.product['imageUrls'],
+        );
+        final List<String> imageUrls = breakdownImageUrls.isNotEmpty
+            ? breakdownImageUrls
+            : (rawImageUrls.isNotEmpty
+                ? rawImageUrls
+                : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]));
         final String description = docData['description'] ?? widget.product['description'] ?? '';
-        final int deliveryDays = docData['deliveryDays'] ?? widget.product['deliveryDays'] ?? 3;
-        final double totalKgStock = (docData['remainingKg'] ?? widget.product['remainingKg'] ?? 0.0) as double;
-        final double srp = (docData['srpPerKg'] ?? widget.product['srpPerKg'] ?? 0.0) as double;
+        final int deliveryDays = _toInt(docData['deliveryDays'] ?? widget.product['deliveryDays'], 3);
+        final double totalKgStock = _toDouble(docData['remainingKg'] ?? widget.product['remainingKg']);
+        final double srp = _toDouble(docData['srpPerKg'] ?? widget.product['srpPerKg']);
         final double rating = ((docData['rating'] ?? widget.product['rating'] ?? 0.0) as num).toDouble();
-        final int totalSold = (docData['totalSold'] ?? docData['sold'] ?? widget.product['totalSold'] ?? 0) as int;
+        final int totalSold = _toInt(docData['totalSold'] ?? docData['sold'] ?? widget.product['totalSold']);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFC),

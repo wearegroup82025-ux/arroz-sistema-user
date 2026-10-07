@@ -819,6 +819,77 @@ class _HorizontalProductSection extends StatelessWidget {
     required this.onSeeAll,
   });
 
+  /// Gamitin ang eksaktong FIFO at Grouping Logic na mula sa ProductPage
+  List<Map<String, dynamic>> _processFifoProducts(List<QueryDocumentSnapshot> docs) {
+    List<Map<String, dynamic>> allBatches = [];
+
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      if (data['isDeleted'] == true) continue;
+
+      final String docId = doc.id;
+      final String type = data['type'] ?? 'N/A';
+      final List breakdowns = data['breakdowns'] ?? [];
+      final Timestamp? createdAt = data['createdAt'] as Timestamp?;
+      final String imageUrl = data['imageUrl'] ?? '';
+      final List<String> imageUrls = List<String>.from(data['imageUrls'] ?? const []);
+      final List<String> safeImageUrls = imageUrls.isNotEmpty
+          ? imageUrls
+          : (imageUrl.isNotEmpty ? [imageUrl] : <String>[]);
+      final String description = data['description'] ?? '';
+      final double rating = ((data['rating'] ?? data['averageRating'] ?? 0.0) as num).toDouble();
+      final int totalSold = (data['totalSold'] ?? data['sold'] ?? 0) as int;
+
+      for (int i = 0; i < breakdowns.length; i++) {
+        final b = breakdowns[i];
+        final double bKg = ((b['kg'] ?? 0.0) as num).toDouble();
+        final double bSrp = ((b['srp'] ?? 0.0) as num).toDouble();
+        final String condition = b['condition'] ?? 'N/A';
+
+        final String displayName = "$type Palay ($condition)";
+        final String groupKey = "${type}_$condition".toLowerCase().replaceAll(" ", "");
+
+        allBatches.add({
+          'docId': docId,
+          'breakdownIndex': i,
+          'groupKey': groupKey,
+          'displayName': displayName,
+          'type': type,
+          'condition': condition,
+          'srpPerKg': bSrp,
+          'remainingKg': bKg,
+          'imageUrl': imageUrl,
+          'imageUrls': safeImageUrls,
+          'description': description,
+          'deliveryDays': data['deliveryDays'] ?? 3,
+          'createdAt': createdAt?.toDate() ?? DateTime.now(),
+          'rating': rating,
+          'totalSold': totalSold,
+        });
+      }
+    }
+
+    allBatches.sort((a, b) => (a['createdAt'] as DateTime).compareTo(b['createdAt'] as DateTime));
+
+    Map<String, Map<String, dynamic>> activeGroupedMap = {};
+
+    for (var item in allBatches) {
+      String key = item['groupKey'];
+
+      if (!activeGroupedMap.containsKey(key)) {
+        if (item['remainingKg'] > 0) {
+          activeGroupedMap[key] = item;
+        }
+      } else {
+        if (activeGroupedMap[key]!['remainingKg'] <= 0 && item['remainingKg'] > 0) {
+          activeGroupedMap[key] = item;
+        }
+      }
+    }
+
+    return activeGroupedMap.values.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -855,52 +926,31 @@ class _HorizontalProductSection extends StatelessWidget {
                 );
               }
 
-              final allDocs = snapshot.data?.docs ?? [];
+              final rawDocs = snapshot.data?.docs ?? [];
+              
+              // 1. KUKUHA NG MGA AKTIBONG BATCH GAMIT ANG SAKTONG FIFO FILTERING:
+              List<Map<String, dynamic>> validProducts = _processFifoProducts(rawDocs);
 
-              // 1. FILTERING:
-              List<QueryDocumentSnapshot> validDocs = allDocs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final bool isDeleted = data['isDeleted'] ?? false;
-                
-                // Kinakalkula rin ang natitirang stock sa breakdowns kung kinakailangan
-                double remainingKg = 0.0;
-                if (data['remainingKg'] != null) {
-                  remainingKg = (data['remainingKg'] as num).toDouble();
-                } else if (data['totalKg'] != null) {
-                  remainingKg = (data['totalKg'] as num).toDouble();
-                } else if (data['breakdowns'] != null && (data['breakdowns'] as List).isNotEmpty) {
-                  for (var b in (data['breakdowns'] as List)) {
-                    remainingKg += ((b['kg'] ?? 0.0) as num).toDouble();
-                  }
-                }
-
-                return !isDeleted && remainingKg > 0;
-              }).toList();
-
-              // 2. SORTING / CRITERIA:
+              // 2. PAG-AAYOS AT SORTING AYON SA SEKSYON:
               if (sectionType == 'best_seller') {
-                validDocs.sort((a, b) {
-                  final dataA = a.data() as Map<String, dynamic>;
-                  final dataB = b.data() as Map<String, dynamic>;
-                  final int soldA = (dataA['totalSold'] ?? dataA['sold'] ?? 0) as int;
-                  final int soldB = (dataB['totalSold'] ?? dataB['sold'] ?? 0) as int;
+                validProducts.sort((a, b) {
+                  final int soldA = (a['totalSold'] ?? 0) as int;
+                  final int soldB = (b['totalSold'] ?? 0) as int;
                   return soldB.compareTo(soldA);
                 });
               } else if (sectionType == 'recommended') {
-                validDocs.sort((a, b) {
-                  final dataA = a.data() as Map<String, dynamic>;
-                  final dataB = b.data() as Map<String, dynamic>;
-                  final double ratingA = ((dataA['rating'] ?? dataA['averageRating'] ?? 0.0) as num).toDouble();
-                  final double ratingB = ((dataB['rating'] ?? dataB['averageRating'] ?? 0.0) as num).toDouble();
+                validProducts.sort((a, b) {
+                  final double ratingA = (a['rating'] ?? 0.0) as double;
+                  final double ratingB = (b['rating'] ?? 0.0) as double;
                   return ratingB.compareTo(ratingA);
                 });
               }
 
-              if (validDocs.length > 5) {
-                validDocs = validDocs.sublist(0, 5);
+              if (validProducts.length > 5) {
+                validProducts = validProducts.sublist(0, 5);
               }
 
-              if (validDocs.isEmpty) {
+              if (validProducts.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 20.0),
                   child: Align(
@@ -913,28 +963,12 @@ class _HorizontalProductSection extends StatelessWidget {
               return ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: validDocs.length,
+                itemCount: validProducts.length,
                 itemBuilder: (context, index) {
-                  final prod = validDocs[index].data() as Map<String, dynamic>;
-                  final String? imageUrl = prod['imageUrl'] ?? prod['photoUrl'] ?? prod['image'];
-                  final int totalSold = (prod['totalSold'] ?? prod['sold'] ?? 0) as int;
-
-                  // KUKUHA NG TAMA AT BALIDONG PRESYO SA IBA'T IBANG STRUCTURES
-                  double displayPrice = 0.0;
-                  if (prod['price'] != null && (prod['price'] as num) > 0) {
-                    displayPrice = (prod['price'] as num).toDouble();
-                  } else if (prod['srp'] != null && (prod['srp'] as num) > 0) {
-                    displayPrice = (prod['srp'] as num).toDouble();
-                  } else if (prod['srpPerKg'] != null && (prod['srpPerKg'] as num) > 0) {
-                    displayPrice = (prod['srpPerKg'] as num).toDouble();
-                  } else if (prod['breakdowns'] != null && (prod['breakdowns'] as List).isNotEmpty) {
-                    final breakdowns = prod['breakdowns'] as List;
-                    final activeBreakdown = breakdowns.firstWhere(
-                      (b) => ((b['kg'] ?? 0) as num) > 0,
-                      orElse: () => breakdowns.first,
-                    );
-                    displayPrice = ((activeBreakdown['srp'] ?? 0.0) as num).toDouble();
-                  }
+                  final prod = validProducts[index];
+                  final String? imageUrl = prod['imageUrl'];
+                  final int totalSold = (prod['totalSold'] ?? 0) as int;
+                  final double displayPrice = (prod['srpPerKg'] ?? 0.0) as double;
 
                   return GestureDetector(
                     onTap: onSeeAll,
@@ -971,21 +1005,17 @@ class _HorizontalProductSection extends StatelessWidget {
                             ),
                             const Spacer(),
                             Text(
-                              prod['name'] ?? prod['title'] ?? (prod['type'] != null ? "${prod['type']} Palay" : 'Palay Bag'),
+                              prod['displayName'] ?? 'Palay Bag',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
-                            
-                            // IPAPAKITA NA DITO ANG TOTOONG KINUHA NA PRESYO
                             Text(
                               "₱${displayPrice.toStringAsFixed(2)} /kg",
                               style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 4),
-                            
-                            // Total Sold
                             Text(
                               "$totalSold sold",
                               style: TextStyle(fontSize: 11, color: theme.colorScheme.outline, fontWeight: FontWeight.w500),

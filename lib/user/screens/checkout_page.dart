@@ -44,8 +44,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
     'longitude': 121.0453,
   };
 
-  int completedOrderCount = 0;
-  double loyaltyDiscount = 0.0;
+  // Bulk purchase discount: 10% off the palay subtotal for orders of 1,000 kg or more.
+  static const double bulkDiscountMinimumKg = 1000.0;
+  static const double bulkDiscountRate = 0.10;
+
+  double get bulkDiscount => totalPalayKg >= bulkDiscountMinimumKg
+      ? widget.totalAmount * bulkDiscountRate
+      : 0.0;
+
+  bool get isBulkDiscountEligible => totalPalayKg >= bulkDiscountMinimumKg;
 
   @override
   void initState() {
@@ -56,7 +63,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     } else {
       _loadDefaultAddress();
     }
-    _checkCustomerLoyalty();
   }
 
   @override
@@ -101,16 +107,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (calculatedKm < 1.0) calculatedKm = 1.0;
 
-      double baseFare = 40.0;      
-      double ratePerKm = 5.0;      
-      double ratePerKg = 0.50;     
+      // Affordable starting rates. Review these against actual delivery costs.
+      const double baseFare = 40.0;
+      const double ratePerKm = 4.0;
+      const double ratePerKg = 0.30;
+      const double minimumShippingFee = 50.0;
+      const double maximumShippingFee = 250.0;
 
-      double calculatedShipping = baseFare + (calculatedKm * ratePerKm) + (totalPalayKg * ratePerKg);
+      double calculatedShipping = baseFare +
+          (calculatedKm * ratePerKm) +
+          (totalPalayKg * ratePerKg);
 
-      const double maxShippingFee = 300.0;
-      if (calculatedShipping > maxShippingFee) {
-        calculatedShipping = maxShippingFee;
-      }
+      calculatedShipping = calculatedShipping
+          .clamp(minimumShippingFee, maximumShippingFee)
+          .toDouble();
 
       if (mounted) {
         setState(() {
@@ -125,33 +135,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  Future<void> _checkCustomerLoyalty() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection("orders")
-          .where("userId", isEqualTo: user.uid)
-          .where("orderStatus", isEqualTo: "Completed")
-          .get();
-
-      if (mounted) {
-        setState(() {
-          completedOrderCount = snapshot.docs.length;
-          if (completedOrderCount >= 3) {
-            loyaltyDiscount = widget.totalAmount * 0.05; // 5% Discount
-          } else {
-            loyaltyDiscount = 0.0;
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint("Loyalty Check Error: $e");
-    }
-  }
-
-  double get totalDiscount => loyaltyDiscount;
+  double get totalDiscount => bulkDiscount;
 
   double get finalTotal {
     double itemTotalAfterDiscount = widget.totalAmount - totalDiscount;
@@ -437,7 +421,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "subtotal": widget.totalAmount,
         "shippingFee": shippingFee,
         "discountAmount": totalDiscount,
-        "loyaltyDiscount": loyaltyDiscount,
+        "bulkPurchaseDiscount": bulkDiscount,
+        "discountType": isBulkDiscountEligible ? "Bulk Purchase Discount" : null,
+        "discountRate": isBulkDiscountEligible ? bulkDiscountRate : 0.0,
         "totalAmount": finalTotal,
         "totalPalayKg": totalPalayKg,
         "paymentMethod": paymentMethod,
@@ -723,31 +709,92 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
             const SizedBox(height: 16),
 
-            // Loyalty Discount
-            if (completedOrderCount >= 3)
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.stars, color: primaryColor),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          "Suki Customer Perk: May 5% Loyalty Discount ka dahil sa iyong $completedOrderCount completed orders!",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold,
+            // Bulk Purchase Discount Voucher (always visible)
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.local_offer, color: primaryColor),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            "Bulk Purchase Discount",
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: isBulkDiscountEligible ? Colors.green.shade100 : Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            isBulkDiscountEligible ? "APPLICABLE" : "NOT YET APPLICABLE",
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isBulkDiscountEligible ? Colors.green.shade800 : Colors.orange.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isBulkDiscountEligible ? Colors.green.shade50 : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isBulkDiscountEligible ? Colors.green.shade300 : Colors.grey.shade400,
+                        ),
                       ),
-                    ],
-                  ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "10% OFF",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 22,
+                              color: isBulkDiscountEligible ? Colors.green.shade800 : Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          const Text(
+                            "Get 10% discount when you order at least 1,000 kg of palay.",
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            "Your current order: ${totalPalayKg.toStringAsFixed(0)} kg",
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isBulkDiscountEligible
+                                ? "Great! The 10% bulk purchase discount is applied to your palay subtotal."
+                                : "Add ${(bulkDiscountMinimumKg - totalPalayKg).toStringAsFixed(0)} kg more to qualify.",
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isBulkDiscountEligible ? Colors.green.shade800 : Colors.orange.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            ),
             const SizedBox(height: 16),
 
             // Order Summary
@@ -779,13 +826,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         Text("₱${widget.totalAmount.toStringAsFixed(2)}"),
                       ],
                     ),
-                    if (loyaltyDiscount > 0) ...[
+                    if (bulkDiscount > 0) ...[
                       const SizedBox(height: 4),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("Suki Loyalty Discount (5%):", style: TextStyle(color: Colors.green)),
-                          Text("-₱${loyaltyDiscount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                          const Text("Bulk Purchase Discount (10%):", style: TextStyle(color: Colors.green)),
+                          Text("-₱${bulkDiscount.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],

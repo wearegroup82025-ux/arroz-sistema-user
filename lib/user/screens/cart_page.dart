@@ -85,8 +85,8 @@ class _CartPageState extends State<CartPage> {
             .collection("cart")
             .where("userId", isEqualTo: currentUser!.uid)
             .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        builder: (context, cartSnapshot) {
+          if (!cartSnapshot.hasData || cartSnapshot.data!.docs.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -99,219 +99,270 @@ class _CartPageState extends State<CartPage> {
             );
           }
 
-          final cartDocs = snapshot.data!.docs;
-          double totalAmount = 0;
-          List<QueryDocumentSnapshot> selectedDocs = [];
+          // Kumuha ng realtime update mula sa products collection para ma-cross-check ang availability ng items
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection("products").snapshots(),
+            builder: (context, productSnapshot) {
+              if (!productSnapshot.hasData) {
+                return const Center(
+                  child: CircularProgressIndicator(color: ArrozTheme.emerald),
+                );
+              }
 
-          for (var doc in cartDocs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final double price = (data['price'] ?? 0.0).toDouble();
-            final int quantity = data['quantity'] ?? 1;
+              // I-map ang umiiral na mga produkto sa Firestore sa tulong ng kanilang ID
+              final Map<String, Map<String, dynamic>> activeProductsMap = {};
+              for (var pDoc in productSnapshot.data!.docs) {
+                activeProductsMap[pDoc.id] = pDoc.data() as Map<String, dynamic>;
+              }
 
-            if (_selectedItemIds.contains(doc.id)) {
-              selectedDocs.add(doc);
-              totalAmount += (price * quantity);
-            }
-          }
+              // Filter & Cleanup logic: Tanggalin sa Cart UI at sa Firestore kapag nabura na sa products
+              final cartDocs = cartSnapshot.data!.docs.where((doc) {
+                final item = doc.data() as Map<String, dynamic>;
+                final String? productId = item['productId'];
 
-          return Column(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  itemCount: cartDocs.length,
-                  itemBuilder: (context, index) {
-                    final doc = cartDocs[index];
-                    final item = doc.data() as Map<String, dynamic>;
-                    final bool isChecked = _selectedItemIds.contains(doc.id);
+                // 1. Kung wala na ang productId sa products collection (Ganap nang nabura sa Admin)
+                if (productId == null || !activeProductsMap.containsKey(productId)) {
+                  FirebaseFirestore.instance.collection("cart").doc(doc.id).delete();
+                  return false;
+                }
 
-                    final double price = (item['price'] ?? 0.0).toDouble();
-                    final int quantity = item['quantity'] ?? 1;
-                    final String variation = item['variation'] ?? 'Kilo';
-                    final String imageUrl = item['imageUrl'] ?? '';
+                // 2. Kung ang produkto ay na-marka bilang isDeleted: true sa admin inventory
+                final productData = activeProductsMap[productId]!;
+                if (productData['isDeleted'] == true) {
+                  FirebaseFirestore.instance.collection("cart").doc(doc.id).delete();
+                  return false;
+                }
 
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
-                      ),
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            activeColor: ArrozTheme.emerald,
-                            value: isChecked,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                            onChanged: (bool? value) {
-                              setState(() {
-                                if (value == true) {
-                                  _selectedItemIds.add(doc.id);
-                                } else {
-                                  _selectedItemIds.remove(doc.id);
-                                }
-                              });
-                            },
+                return true;
+              }).toList();
+
+              if (cartDocs.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.shopping_cart_outlined, size: 70, color: Colors.grey.shade400),
+                      const SizedBox(height: 12),
+                      Text(local.emptyCart, style: const TextStyle(color: ArrozTheme.textSub, fontSize: 15)),
+                    ],
+                  ),
+                );
+              }
+
+              double totalAmount = 0;
+              List<QueryDocumentSnapshot> selectedDocs = [];
+
+              for (var doc in cartDocs) {
+                final data = doc.data() as Map<String, dynamic>;
+                final double price = (data['price'] ?? 0.0).toDouble();
+                final int quantity = data['quantity'] ?? 1;
+
+                if (_selectedItemIds.contains(doc.id)) {
+                  selectedDocs.add(doc);
+                  totalAmount += (price * quantity);
+                }
+              }
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      itemCount: cartDocs.length,
+                      itemBuilder: (context, index) {
+                        final doc = cartDocs[index];
+                        final item = doc.data() as Map<String, dynamic>;
+                        final bool isChecked = _selectedItemIds.contains(doc.id);
+
+                        final double price = (item['price'] ?? 0.0).toDouble();
+                        final int quantity = item['quantity'] ?? 1;
+                        final String variation = item['variation'] ?? 'Kilo';
+                        final String imageUrl = item['imageUrl'] ?? '';
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
                           ),
-                          
-                          // Product Image
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: imageUrl.isNotEmpty
-                                ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover)
-                                : Container(
-                                    width: 50,
-                                    height: 50,
-                                    color: ArrozTheme.bgGrey,
-                                    child: const Icon(Icons.image, size: 24, color: Colors.grey),
-                                  ),
-                          ),
-                          const SizedBox(width: 10),
-
-                          // Product Info & Variation Tag
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item['name'] ?? 'Item',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: ArrozTheme.textDark),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: ArrozTheme.emerald.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        variation.toUpperCase(),
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: ArrozTheme.emerald,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      "₱${price.toStringAsFixed(2)}",
-                                      style: const TextStyle(color: ArrozTheme.textSub, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-
-                                // Quantity Controls
-                                Row(
-                                  children: [
-                                    InkWell(
-                                      onTap: () => _updateQuantity(doc.id, quantity, -1),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: Colors.grey.shade300),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Icon(Icons.remove, size: 14, color: ArrozTheme.textDark),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                      child: Text("$quantity", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                    ),
-                                    InkWell(
-                                      onTap: () => _updateQuantity(doc.id, quantity, 1),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: Colors.grey.shade300),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Icon(Icons.add, size: 14, color: ArrozTheme.textDark),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Subtotal & Delete
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          child: Row(
                             children: [
-                              Text(
-                                "₱${(price * quantity).toStringAsFixed(2)}",
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: ArrozTheme.emerald, fontSize: 14),
+                              Checkbox(
+                                activeColor: ArrozTheme.emerald,
+                                value: isChecked,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      _selectedItemIds.add(doc.id);
+                                    } else {
+                                      _selectedItemIds.remove(doc.id);
+                                    }
+                                  });
+                                },
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: ArrozTheme.dangerRed, size: 18),
-                                onPressed: () => FirebaseFirestore.instance.collection("cart").doc(doc.id).delete(),
+                              
+                              // Product Image
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: imageUrl.isNotEmpty
+                                    ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover)
+                                    : Container(
+                                        width: 50,
+                                        height: 50,
+                                        color: ArrozTheme.bgGrey,
+                                        child: const Icon(Icons.image, size: 24, color: Colors.grey),
+                                      ),
+                              ),
+                              const SizedBox(width: 10),
+
+                              // Product Info & Variation Tag
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item['name'] ?? 'Item',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: ArrozTheme.textDark),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: ArrozTheme.emerald.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            variation.toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: ArrozTheme.emerald,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          "₱${price.toStringAsFixed(2)}",
+                                          style: const TextStyle(color: ArrozTheme.textSub, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+
+                                    // Quantity Controls
+                                    Row(
+                                      children: [
+                                        InkWell(
+                                          onTap: () => _updateQuantity(doc.id, quantity, -1),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: Colors.grey.shade300),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: const Icon(Icons.remove, size: 14, color: ArrozTheme.textDark),
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                          child: Text("$quantity", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                        ),
+                                        InkWell(
+                                          onTap: () => _updateQuantity(doc.id, quantity, 1),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: Colors.grey.shade300),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: const Icon(Icons.add, size: 14, color: ArrozTheme.textDark),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Subtotal & Delete
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    "₱${(price * quantity).toStringAsFixed(2)}",
+                                    style: const TextStyle(fontWeight: FontWeight.bold, color: ArrozTheme.emerald, fontSize: 14),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: ArrozTheme.dangerRed, size: 18),
+                                    onPressed: () => FirebaseFirestore.instance.collection("cart").doc(doc.id).delete(),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
+                        );
+                      },
+                    ),
+                  ),
 
-              // Bottom Checkout Panel
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, -2))],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  // Bottom Checkout Panel
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, -2))],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(local.total, style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
-                        Text(
-                          "₱${totalAmount.toStringAsFixed(2)}",
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.emerald),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(local.total, style: const TextStyle(fontSize: 12, color: ArrozTheme.textSub)),
+                            Text(
+                              "₱${totalAmount.toStringAsFixed(2)}",
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: ArrozTheme.emerald),
+                            ),
+                          ],
                         ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ArrozTheme.emerald,
+                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () {
+                            if (selectedDocs.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(local.selectItemFirst),
+                                ),
+                              );
+                            } else {
+                              _proceedToCheckout(
+                                selectedDocs,
+                                totalAmount,
+                              );
+                            }
+                          },
+                          child: Text(
+                            local.checkoutCart,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        )
                       ],
                     ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: ArrozTheme.emerald,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () {
-                        if (selectedDocs.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(local.selectItemFirst),
-                            ),
-                          );
-                        } else {
-                          _proceedToCheckout(
-                            selectedDocs,
-                            totalAmount,
-                          );
-                        }
-                      },
-                      child: Text(
-                        local.checkoutCart,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    )
-                  ],
-                ),
-              )
-            ],
+                  )
+                ],
+              );
+            },
           );
         },
       ),

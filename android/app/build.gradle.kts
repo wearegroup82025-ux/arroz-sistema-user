@@ -32,8 +32,8 @@ android {
         // Naka-set sa 36 para maging tugma ang runtime behavior
         targetSdk = 36
 
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         multiDexEnabled = true
     }
