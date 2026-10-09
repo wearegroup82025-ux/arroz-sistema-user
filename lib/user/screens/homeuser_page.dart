@@ -9,6 +9,7 @@ import 'orders_page.dart';
 import 'product_page.dart';
 import 'profile_page.dart';
 import 'messages_page.dart';
+import 'notification_page.dart';
 import 'login_page.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
@@ -335,139 +336,7 @@ class _DashboardView extends StatelessWidget {
     return language == AppLanguage.english ? "Good Evening! 🌙" : "Magandang Gabi! 🌙";
   }
 
-  void _showNotificationPanel(BuildContext context, AppLocalizations local, String userId) {
-    final theme = Theme.of(context);
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: theme.colorScheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            return Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        local.notifTitle,
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.done_all, color: theme.colorScheme.primary, size: 20),
-                        tooltip: "I-mark lahat bilang nabasa",
-                        onPressed: () async {
-                          final batch = FirebaseFirestore.instance.batch();
-                          final unread = await FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(userId)
-                              .collection('notifications')
-                              .where('isRead', isEqualTo: false)
-                              .get();
-                          for (var doc in unread.docs) {
-                            batch.update(doc.reference, {'isRead': true});
-                          }
-                          await batch.commit();
-                        },
-                      )
-                    ],
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(userId)
-                          .collection('notifications')
-                          .orderBy('createdAt', descending: true)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
-                        }
-
-                        final docs = snapshot.data?.docs ?? [];
-                        if (docs.isEmpty) {
-                          return Center(
-                            child: Text(local.noNotif, style: TextStyle(color: theme.colorScheme.outline, fontSize: 14)),
-                          );
-                        }
-
-                        return ListView.builder(
-                          controller: scrollController,
-                          itemCount: docs.length,
-                          itemBuilder: (context, index) {
-                            final notif = docs[index].data() as Map<String, dynamic>;
-                            final bool isRead = notif['isRead'] ?? false;
-                            final String type = notif['type'] ?? 'GENERAL';
-
-                            IconData notifIcon = Icons.notifications;
-                            Color iconColor = theme.colorScheme.primary;
-
-                            if (type == 'ORDER_UPDATE') {
-                              notifIcon = Icons.local_shipping;
-                              iconColor = Colors.blue;
-                            } else if (type == 'RESTOCK_ALERT') {
-                              notifIcon = Icons.storefront;
-                              iconColor = Colors.orange;
-                            } else if (type == 'CART_NUDGE') {
-                              notifIcon = Icons.shopping_cart;
-                              iconColor = theme.colorScheme.error;
-                            }
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: isRead ? Colors.transparent : theme.colorScheme.primaryContainer.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: iconColor.withOpacity(0.15),
-                                  child: Icon(notifIcon, color: iconColor, size: 20),
-                                ),
-                                title: Text(
-                                  notif['title'] ?? 'Notification',
-                                  style: TextStyle(
-                                    fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                                    fontSize: 14,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  notif['body'] ?? '',
-                                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
-                                ),
-                                onTap: () {
-                                  docs[index].reference.update({'isRead': true});
-                                  Navigator.pop(context);
-                                  if (type == 'ORDER_UPDATE') onNavigateToOrders();
-                                  if (type == 'CART_NUDGE') onNavigateToCart();
-                                  if (type == 'RESTOCK_ALERT') onNavigateToProducts();
-                                },
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -525,7 +394,14 @@ class _DashboardView extends StatelessWidget {
                         isLabelVisible: unreadCount > 0,
                         child: Icon(Icons.notifications_none_outlined, color: theme.colorScheme.onPrimary),
                       ),
-                      onPressed: () => _showNotificationPanel(context, local, currentUser.uid),
+                      onPressed: () {
+                         Navigator.push(
+                           context,
+                           MaterialPageRoute(
+                             builder: (_) => const NotificationPage(),
+                           ),
+                         );
+                       },
                     );
                   },
                 ),

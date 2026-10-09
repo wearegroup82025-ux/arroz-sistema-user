@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'homeuser_page.dart';
 import 'registeruser_page.dart';
 import 'forgot_password_sheet.dart';
+import '../../services/notification/notification_service.dart';
 
 class ArrozTheme {
   static const Color primary = Color(0xFF0F5132);
@@ -430,6 +431,10 @@ class _LoginUserPageState extends State<LoginUserPage> {
           }
         }
       }
+
+      // Register the current device's FCM token only after the account
+      // has passed all user-account validation checks above.
+      await NotificationService().registerCurrentUserToken();
 
       _failedAttempts = 0;
     } on FirebaseAuthException catch (_) {

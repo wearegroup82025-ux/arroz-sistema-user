@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'order_details_page.dart';
 import '../../providers/language_provider.dart';
 import '../../services/app_localizations.dart';
+import '../../services/notification/notification_service.dart';
 import 'profile_page.dart';
 
 class OrdersPage extends StatefulWidget {
@@ -17,17 +19,217 @@ class OrdersPage extends StatefulWidget {
 class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateMixin {
   bool isCancelling = false;
   late TabController _tabController;
+  StreamSubscription<QuerySnapshot>? _ordersSubscription;
+  final Map<String, String> _lastStatuses = {};
+  bool _isInitialLoad = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 6, vsync: this);
+    _listenToOrderStatusChanges();
   }
 
   @override
   void dispose() {
+    _ordersSubscription?.cancel();
     _tabController.dispose();
     super.dispose();
+  }
+
+  /// Nanonood ng pagbabago ng status sa Firestore para mag-trigger ng notification agad
+  void _listenToOrderStatusChanges() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _ordersSubscription = FirebaseFirestore.instance
+        .collection("orders")
+        .where("userId", isEqualTo: user.uid)
+        .snapshots()
+        .listen((snapshot) {
+      if (_isInitialLoad) {
+        for (var doc in snapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final status = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString();
+          _lastStatuses[doc.id] = status;
+        }
+        _isInitialLoad = false;
+        return;
+      }
+
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.modified) {
+          final data = change.doc.data() as Map<String, dynamic>?;
+          if (data == null) continue;
+
+          final newStatus = (data['orderStatus'] ?? data['status'] ?? 'Pending').toString();
+          final oldStatus = _lastStatuses[change.doc.id];
+
+          if (oldStatus != null && oldStatus != newStatus) {
+            _lastStatuses[change.doc.id] = newStatus;
+
+            NotificationService.showNotification(
+              title: "Update sa Order #${change.doc.id.substring(0, change.doc.id.length > 8 ? 8 : change.doc.id.length).toUpperCase()}",
+              body: "Ang status ng iyong order ay: $newStatus",
+              channelId: NotificationService.channelOrders,
+            );
+          }
+        }
+      }
+    });
+  }
+
+  /// Inayos: Function para mag-cancel ng order at ibalik ang stock sa Inventory
+  Future<void> _cancelOrder(String orderId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Kumpirmahin ang Pag-cancel"),
+        content: const Text("Sigurado ka bang nais mong i-cancel ang order na ito?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Hindi"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Oo, I-cancel", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      isCancelling = true;
+    });
+
+    try {
+      final orderDocSnap = await FirebaseFirestore.instance.collection("orders").doc(orderId).get();
+      if (!orderDocSnap.exists) {
+        throw Exception("Hindi nahanap ang order.");
+      }
+
+      final orderData = orderDocSnap.data() ?? {};
+      final List<dynamic> rawItems = orderData['items'] ?? [];
+
+      // 1. I-resolve muna ang Product References bago mag-transaction
+      final Map<String, DocumentReference> resolvedRefs = {};
+      final productsQuery = await FirebaseFirestore.instance
+          .collection("products")
+          .where("isDeleted", isEqualTo: false)
+          .get();
+
+      for (var item in rawItems) {
+        final Map<String, dynamic> itemMap = Map<String, dynamic>.from(item);
+        final String productId = (itemMap['productId'] ?? itemMap['id'] ?? '').toString();
+        final String productName = (itemMap['name'] ?? itemMap['productName'] ?? itemMap['title'] ?? '').toString();
+
+        DocumentReference? pRef;
+
+        if (productId.isNotEmpty) {
+          final pDoc = await FirebaseFirestore.instance.collection("products").doc(productId).get();
+          if (pDoc.exists) {
+            pRef = pDoc.reference;
+          }
+        }
+
+        if (pRef == null) {
+          for (var doc in productsQuery.docs) {
+            final pData = doc.data();
+            final name = (pData['name'] ?? '').toString().toLowerCase().trim();
+            final target = productName.toLowerCase().trim();
+            if (name.contains(target) || target.contains(name)) {
+              pRef = doc.reference;
+              break;
+            }
+          }
+        }
+
+        if (pRef == null && productsQuery.docs.isNotEmpty) {
+          pRef = productsQuery.docs.first.reference;
+        }
+
+        if (pRef != null) {
+          final key = productId.isNotEmpty ? productId : productName;
+          resolvedRefs[key] = pRef;
+        }
+      }
+
+      // 2. Patakbuhin ang Firestore Transaction para maibalik sa Inventory ang Stock
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final orderRef = FirebaseFirestore.instance.collection("orders").doc(orderId);
+
+        for (var item in rawItems) {
+          final Map<String, dynamic> itemMap = Map<String, dynamic>.from(item);
+          final String productId = (itemMap['productId'] ?? itemMap['id'] ?? '').toString();
+          final String productName = (itemMap['name'] ?? itemMap['productName'] ?? itemMap['title'] ?? '').toString();
+          final int quantity = int.tryParse(itemMap['quantity']?.toString() ?? '1') ?? 1;
+          final String unit = (itemMap['unit'] ?? itemMap['unitType'] ?? itemMap['type'] ?? '').toString().toLowerCase().trim();
+
+          final key = productId.isNotEmpty ? productId : productName;
+          final productRef = resolvedRefs[key];
+
+          if (productRef != null) {
+            final pSnap = await transaction.get(productRef);
+            if (pSnap.exists) {
+              final pData = pSnap.data() as Map<String, dynamic>? ?? {};
+
+              final double currentRemainingKg = ((pData['remainingKg'] ?? pData['stock'] ?? pData['initialKg'] ?? 0.0) as num).toDouble();
+              final int currentTotalSold = (pData['totalSold'] ?? pData['sold'] ?? 0) as int;
+
+              int restorationKg = quantity;
+              if (unit.contains('sako') || unit.contains('sack') || productName.toLowerCase().contains('sako')) {
+                restorationKg = quantity * 50;
+              }
+
+              final double newRemainingKg = currentRemainingKg + restorationKg;
+              final int newTotalSold = (currentTotalSold - quantity).clamp(0, 999999);
+
+              transaction.update(productRef, {
+                'remainingKg': newRemainingKg,
+                'stock': newRemainingKg,
+                'totalSold': newTotalSold,
+                'sold': newTotalSold,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          }
+        }
+
+        // I-update ang Order Status sa Cancelled
+        transaction.update(orderRef, {
+          'orderStatus': 'Cancelled',
+          'status': 'Cancelled',
+          'inventoryDeducted': false,
+          'cancelledAt': FieldValue.serverTimestamp(),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Na-cancel nang matagumpay ang order at naibalik ang stock sa Inventory!"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Nagka-error sa pag-cancel: $e")),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isCancelling = false;
+        });
+      }
+    }
   }
 
   PreferredSizeWidget _buildAppBar(AppLocalizations local) {
@@ -76,7 +278,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         '${date.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Tinitingnan kung lagpas na sa 7 araw mula nang ma-complete ang order
   bool _isRatingExpired(Map<String, dynamic> orderData) {
     dynamic completedValue = orderData['completedAt'] ?? orderData['updatedAt'] ?? orderData['createdAt'];
     if (completedValue == null) return false;
@@ -94,7 +295,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     return difference.inDays >= 7;
   }
 
-  /// Dialog para sa pag-rate at pag-review ng order
   void _showRatingDialog(BuildContext context, String orderId) {
     double selectedRating = 5.0;
     final TextEditingController commentController = TextEditingController();
@@ -172,7 +372,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                           try {
                             final currentUser = FirebaseAuth.instance.currentUser;
 
-                            // 1. Kukunin ang details ng order para makuha ang mga items
                             final orderDoc = await FirebaseFirestore.instance
                                 .collection("orders")
                                 .doc(orderId)
@@ -183,7 +382,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                             final String userName =
                                 orderData['userName'] ?? currentUser?.displayName ?? 'Buyer';
 
-                            // 2. Batch write para i-save sa "reviews" collection at i-update ang "orders" doc
                             final WriteBatch batch = FirebaseFirestore.instance.batch();
 
                             for (var item in items) {
@@ -206,7 +404,6 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                               }
                             }
 
-                            // 3. I-update ang order status
                             final orderRef =
                                 FirebaseFirestore.instance.collection("orders").doc(orderId);
                             batch.update(orderRef, {
@@ -254,6 +451,59 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           },
         );
       },
+    );
+  }
+
+  Widget _buildStatusBadge(
+    String rawStatus,
+    bool isPaid,
+    String paymentMethod,
+    bool prepareToShip,
+  ) {
+    final status = rawStatus.trim().toLowerCase();
+    final String label;
+    final Color color;
+
+    if (status == 'cancelled' || status == 'canceled') {
+      label = 'Cancelled';
+      color = Colors.red;
+    } else if (status == 'completed' || status == 'delivered' || status == 'done') {
+      label = 'Completed';
+      color = ArrozTheme.emerald;
+    } else if (status == 'to deliver' ||
+        status == 'to receive' ||
+        status == 'out for delivery' ||
+        status == 'outfordelivery' ||
+        status == 'todeliver' ||
+        status == 'shipped' ||
+        status == 'shipping') {
+      label = 'Out for Delivery';
+      color = Colors.deepPurple;
+    } else if (status == 'to ship' || status == 'toship' || status == 'processing' || prepareToShip || isPaid) {
+      label = 'To Ship';
+      color = Colors.blue;
+    } else if (status == 'pending' || status == 'topay' || status == 'to pay' || status == 'unpaid') {
+      label = paymentMethod.trim().toLowerCase() == 'cod' ? 'Pending' : 'To Pay';
+      color = Colors.orange;
+    } else {
+      label = rawStatus.trim().isEmpty ? 'Pending' : rawStatus.trim();
+      color = Colors.orange;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 
@@ -358,7 +608,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(appBar: _buildAppBar(local), body: const Center(child: CircularProgressIndicator(color: ArrozTheme.emerald)));
+          return Scaffold(
+            appBar: _buildAppBar(local),
+            body: const Center(
+              child: CircularProgressIndicator(color: ArrozTheme.emerald),
+            ),
+          );
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Scaffold(
@@ -396,7 +651,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                         _buildListView(allOrders, local: local),
                         _buildToPayTab(allOrders, local),
                         _buildToShipTab(allOrders, local),
-                        _buildToReceiveTab(allOrders, local),
+                        _buildToDeliverTab(allOrders, local),
                         _buildCompletedTab(allOrders, local),
                         _buildCancelledTab(allOrders, local),
                       ],
@@ -407,7 +662,9 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
               if (isCancelling)
                 Container(
                   color: Colors.black38,
-                  child: const Center(child: CircularProgressIndicator(color: ArrozTheme.emerald)),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: ArrozTheme.emerald),
+                  ),
                 ),
             ],
           ),
@@ -430,13 +687,31 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     );
   }
 
+  Widget _noOrders(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: ArrozTheme.textSub, fontSize: 14),
+        ),
+      ),
+    );
+  }
+
   Widget _buildToPayTab(List<QueryDocumentSnapshot> orders, AppLocalizations local) {
     final toPay = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
+      final String status = (data['orderStatus'] ?? data['status'] ?? 'Pending')
+          .toString()
+          .trim()
+          .toLowerCase();
       final bool isPaid = data['isPaid'] ?? false;
       final bool prepareToShip = data['prepareToShip'] ?? false;
-      return (status == "Pending" || status == "Unpaid") && !isPaid && !prepareToShip;
+      return (status == "pending" || status == "unpaid" || status == "topay" || status == "to pay") &&
+          !isPaid &&
+          !prepareToShip;
     }).toList();
 
     if (toPay.isEmpty) return _noOrders("Walang orders na naghihintay ng bayad.");
@@ -446,34 +721,47 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
   Widget _buildToShipTab(List<QueryDocumentSnapshot> orders, AppLocalizations local) {
     final toShip = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
-      final bool isPaid = data['isPaid'] ?? false;
-      final bool prepareToShip = data['prepareToShip'] ?? false;
-      return (status == "Pending" || status == "Paid") && (isPaid || prepareToShip);
+      final String status = (data['orderStatus'] ?? data['status'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      return status == "to ship" || status == "toship" || status == "paid" || status == "processing";
     }).toList();
 
     if (toShip.isEmpty) return _noOrders("Walang orders na para i-ship.");
     return _buildListView(toShip, local: local);
   }
 
-  Widget _buildToReceiveTab(List<QueryDocumentSnapshot> orders, AppLocalizations local) {
-    final toReceive = orders.where((doc) {
+  Widget _buildToDeliverTab(List<QueryDocumentSnapshot> orders, AppLocalizations local) {
+    final toDeliver = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      final String status = data['orderStatus'] ?? data['status'] ?? 'Pending';
-      return status == "To Deliver";
+      final String status = (data['orderStatus'] ?? data['status'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      return status == "to deliver" ||
+          status == "to receive" ||
+          status == "out for delivery" ||
+          status == "outfordelivery" ||
+          status == "todeliver" ||
+          status == "shipped" ||
+          status == "shipping";
     }).toList();
 
-    if (toReceive.isEmpty) {
-      return _noOrders("Walang ipinapadalang order sa ngayon.");
-    }
-
-    return _buildListView(toReceive, local: local);
+    if (toDeliver.isEmpty) return _noOrders("Walang ipinapadalang order sa ngayon.");
+    return _buildListView(toDeliver, local: local);
   }
 
   Widget _buildCompletedTab(List<QueryDocumentSnapshot> orders, AppLocalizations local) {
     final completed = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      return (data['orderStatus'] ?? data['status']) == "Completed";
+      final String status = (data['orderStatus'] ?? data['status'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      return status == "completed" || status == "delivered" || status == "done";
     }).toList();
 
     if (completed.isEmpty) return _noOrders("Walang nakukumpletong order.");
@@ -483,7 +771,11 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
   Widget _buildCancelledTab(List<QueryDocumentSnapshot> orders, AppLocalizations local) {
     final cancelled = orders.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      return (data['orderStatus'] ?? data['status']) == "Cancelled";
+      final String status = (data['orderStatus'] ?? data['status'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      return status == "cancelled" || status == "canceled";
     }).toList();
 
     if (cancelled.isEmpty) return _noOrders("Walang na-cancel na order.");
@@ -491,12 +783,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
   }
 
   Widget _buildListView(
-      List<QueryDocumentSnapshot> orders, {
-        required AppLocalizations local,
-        bool canCancel = false,
-        bool buyAgain = false,
-        bool isCompletedTab = false,
-      }) {
+    List<QueryDocumentSnapshot> orders, {
+    required AppLocalizations local,
+    bool canCancel = false,
+    bool buyAgain = false,
+    bool isCompletedTab = false,
+  }) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(
         horizontal: 12,
@@ -509,7 +801,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
 
         final num totalAmount = orderData['totalAmount'] ?? 0;
         final String paymentMethod = orderData['paymentMethod'] ?? 'COD';
-        final String status = orderData['orderStatus'] ?? orderData['status'] ?? 'Pending';
+        final String rawStatus = (orderData['orderStatus'] ?? orderData['status'] ?? 'Pending').toString();
         final bool isPaid = orderData['isPaid'] ?? false;
         final bool prepareToShip = orderData['prepareToShip'] ?? false;
         final List<dynamic> itemsList = orderData['items'] ?? [];
@@ -518,6 +810,15 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         final num? rating = orderData['rating'];
         final String? reviewComment = orderData['reviewComment'];
         final bool ratingExpired = _isRatingExpired(orderData);
+
+        final String cleanStatus = rawStatus.trim().toLowerCase();
+
+        final bool canCancelThisOrder = (cleanStatus == "pending" ||
+                cleanStatus == "unpaid" ||
+                cleanStatus == "topay" ||
+                cleanStatus == "to pay") &&
+            !isPaid &&
+            !prepareToShip;
 
         return InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -555,7 +856,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       _buildStatusBadge(
-                        status,
+                        rawStatus,
                         isPaid,
                         paymentMethod,
                         prepareToShip,
@@ -638,7 +939,29 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     ],
                   ),
 
-                  if (status == "Completed") ...[
+                  if (canCancelThisOrder) ...[
+                    const Divider(height: 20),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _cancelOrder(orderDoc.id),
+                        icon: const Icon(Icons.cancel_outlined, size: 16, color: Colors.red),
+                        label: const Text(
+                          "I-cancel ang Order",
+                          style: TextStyle(color: Colors.red, fontSize: 13),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.red),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  if (cleanStatus == "completed" || cleanStatus == "delivered" || cleanStatus == "done") ...[
                     const Divider(height: 20),
                     if (isRated) ...[
                       Container(
@@ -751,34 +1074,4 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       },
     );
   }
-
-  Widget _buildStatusBadge(String status, bool isPaid, String paymentMethod, bool prepareToShip) {
-    Color badgeColor = Colors.grey;
-    String text = status;
-
-    if (status == "Completed") {
-      badgeColor = ArrozTheme.emerald;
-      text = "Completed";
-    } else if (status == "Cancelled") {
-      badgeColor = ArrozTheme.dangerRed;
-      text = "Cancelled";
-    } else if (status == "To Deliver") {
-      badgeColor = Colors.blue.shade700;
-      text = "To Deliver";
-    } else if (isPaid || prepareToShip || status == "Paid") {
-      badgeColor = ArrozTheme.warningOrange;
-      text = "To Ship";
-    } else {
-      badgeColor = Colors.orange;
-      text = "To Pay";
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: badgeColor.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
-      child: Text(text, style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  Widget _noOrders(String msg) => Center(child: Text(msg, style: const TextStyle(color: ArrozTheme.textSub)));
 }

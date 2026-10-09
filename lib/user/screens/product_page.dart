@@ -46,7 +46,6 @@ Widget _buildProductImage(String url, {double? size, BoxFit fit = BoxFit.cover})
   return Icon(Icons.agriculture_rounded, size: size ?? 48, color: Colors.grey);
 }
 
-
 double _toDouble(dynamic value, [double fallback = 0.0]) {
   if (value is num) return value.toDouble();
   return double.tryParse(value?.toString() ?? '') ?? fallback;
@@ -84,7 +83,7 @@ class _ProductPageState extends State<ProductPage> {
     super.dispose();
   }
 
-  /// FIFO Logic & Grouping
+  /// FIFO Logic & Grouping (Inayos: Live remainingKg na ang ginagamit)
   List<Map<String, dynamic>> _processFifoProducts(List<QueryDocumentSnapshot> docs) {
     List<Map<String, dynamic>> allBatches = [];
 
@@ -105,11 +104,16 @@ class _ProductPageState extends State<ProductPage> {
       final double rating = ((data['rating'] ?? data['averageRating'] ?? 0.0) as num).toDouble();
       final int totalSold = _toInt(data['totalSold'] ?? data['sold']);
 
+      // INAYOS: Kunin ang live remainingKg mula sa document level
+      final double docRemainingKg = _toDouble(data['remainingKg'] ?? data['stock'] ?? data['initialKg']);
+
       for (int i = 0; i < breakdowns.length; i++) {
         final b = breakdowns[i];
-        final double bKg = _toDouble(b['kg']);
         final double bSrp = _toDouble(b['srp']);
         final String condition = b['condition']?.toString() ?? 'N/A';
+
+        // Kapag singular ang breakdown, gagamitin ang aktuwal na live remainingKg
+        final double bKg = breakdowns.length == 1 ? docRemainingKg : _toDouble(b['kg']);
 
         final String displayName = "$type Palay ($condition)";
         final String groupKey = "${type}_$condition".toLowerCase().replaceAll(" ", "");
@@ -349,14 +353,11 @@ class _ProductPageState extends State<ProductPage> {
                                     style: const TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
                                   const SizedBox(height: 4),
-
-                                  // Total Sold na lamang ang nakadisplay
                                   Text(
                                     "$totalSold sold",
                                     style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
                                   ),
                                   const SizedBox(height: 6),
-
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -873,7 +874,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  /// WIDGET PARA SA RATING SUMMARY AT CUSTOMER REVIEWS
   Widget _buildReviewsSection() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -1033,9 +1033,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         final String imageUrl = docData['imageUrl']?.toString() ??
             widget.product['imageUrl']?.toString() ?? '';
 
-        // Each condition/product entry may now have its own up-to-9 photos.
-        // Prefer the selected breakdown's images, then fall back to the
-        // legacy top-level imageUrls/imageUrl fields.
         List<String> breakdownImageUrls = <String>[];
         final dynamic rawBreakdowns = docData['breakdowns'];
         final int breakdownIndex = _toInt(widget.product['breakdownIndex']);
@@ -1104,7 +1101,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                       const SizedBox(height: 8),
 
-                      // Rating at Total Orders/Sold Summary sa loob ng Product Detail Page
                       Row(
                         children: [
                           Row(
