@@ -328,8 +328,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
 
         if (mounted && result == "SUCCESS") {
-          await _deductProductStock();
-          await _removePurchasedItemsFromCart();
+          await orderRef.update({'isPaid': true});
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -433,14 +432,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
         "deliveryDelayDays": deliveryDelayEnabled ? (noticeData['estimatedDelay'] ?? '') : null,
         "deliveryDelayReason": deliveryDelayEnabled ? (noticeData['reason'] ?? '') : null,
         "isPaid": false,
-        "orderStatus": isOnlinePayment ? "Unpaid" : "Pending",
+        // Dito na-apply ang Opsyon A: "processing" kapag GCash para diretso sa To Ship tab[cite: 3]
+        "orderStatus": isOnlinePayment ? "processing" : "Pending",
         "createdAt": FieldValue.serverTimestamp(),
       });
 
-      if (!isOnlinePayment) {
-        await _deductProductStock();
-        await _removePurchasedItemsFromCart();
-      }
+      await _deductProductStock();
+      await _removePurchasedItemsFromCart();
 
       final shortOrderId = orderRef.id.length >= 6 ? orderRef.id.substring(0, 6) : orderRef.id;
       final formattedAmount = "₱${finalTotal.toStringAsFixed(2)}";
@@ -662,7 +660,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        "${selectedAddress!['streetBuildingHouseNo'] ?? ''}, ${selectedAddress!['barangay'] ?? ''}, ${selectedAddress!['cityMunicipality'] ?? ''}, ${selectedAddress!['province'] ?? ''} (${selectedAddress!['postalCode'] ?? ''})",
+                        "${selectedAddress!['streetBuildingHouseNo'] ?? ''}, ${selectedAddress!['barangay'] ?? ''}, ${selectedAddress!['cityMunicipality'] ?? ''}, ${selectedAddress!['province']} (${selectedAddress!['postalCode'] ?? ''})",
                         style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                       ),
                     ]

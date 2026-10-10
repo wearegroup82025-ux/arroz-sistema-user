@@ -725,8 +725,21 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           .toString()
           .trim()
           .toLowerCase();
+      final String paymentMethod = (data['paymentMethod'] ?? '').toString().toLowerCase();
 
-      return status == "to ship" || status == "toship" || status == "paid" || status == "processing";
+      // Sinisiguro na ang mga GCash/E-Wallet orders ay sasama sa To Ship tab kapag naka-processing/pending pa
+      bool isGCashPending = (paymentMethod.contains('gcash') || paymentMethod.contains('e-wallet')) &&
+                          status != "completed" &&
+                          status != "cancelled" &&
+                          status != "canceled" &&
+                          status != "to deliver" &&
+                          status != "out for delivery";
+
+      return status == "to ship" || 
+             status == "toship" || 
+             status == "paid" || 
+             status == "processing" || 
+             isGCashPending;
     }).toList();
 
     if (toShip.isEmpty) return _noOrders("Walang orders na para i-ship.");
